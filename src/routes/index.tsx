@@ -62,8 +62,13 @@ function Index() {
   const runningRef = useRef(false);
 
   const runStory = useCallback(
-    async (point: [number, number]) => {
-      if (busyRef.current) return;
+    async (point: [number, number], force = false) => {
+      if (busyRef.current) {
+        if (!force) return;
+        abortRef.current?.abort();
+        abortRef.current = null;
+        busyRef.current = false;
+      }
       busyRef.current = true;
       lastPointRef.current = point;
       setStatus("thinking");
@@ -207,8 +212,16 @@ function Index() {
                 disabled={status === "thinking" || status === "speaking"}
                 className="flex items-center gap-1 rounded-full bg-primary px-3 py-1 font-medium text-primary-foreground disabled:opacity-40"
               >
-                <SkipForward className="size-3" />
+                <Radio className="size-3" />
                 Tell me something now
+              </button>
+              <button
+                onClick={() => coords && void runStory(coords, true)}
+                disabled={!coords}
+                className="flex items-center gap-1 rounded-full border border-border px-3 py-1 font-medium disabled:opacity-40"
+              >
+                <SkipForward className="size-3" />
+                Skip · next place
               </button>
             </div>
           ) : null}
