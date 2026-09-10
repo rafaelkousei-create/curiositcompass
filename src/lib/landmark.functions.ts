@@ -65,6 +65,8 @@ export const getNearbyStory = createServerFn({ method: "POST" })
       "greetings, no 'welcome to', no mention of coordinates or GPS, ready to be read aloud.",
       "headline: max 8 words. area: the neighbourhood, town or city. category: e.g. 'Historic church'.",
       "distanceHint: a short spoken cue like 'just on your right' or 'about 200 metres ahead'.",
+      "lat/lng: the real decimal coordinates of the landmark itself, as precise as you know them",
+      "(use 0 and 0 only when found is false).",
       "Never repeat a landmark that appears in the already-told list.",
     ].join(" ");
 
@@ -92,6 +94,8 @@ export const getNearbyStory = createServerFn({ method: "POST" })
         headline: "",
         story: "",
         distanceHint: "",
+        lat: 0,
+        lng: 0,
       };
     }
   });
@@ -104,4 +108,6 @@ const StoryParser = z.object({
   headline: z.string(),
   story: z.string(),
   distanceHint: z.string(),
+  lat: z.number().default(0),
+  lng: z.number().default(0),
 });
