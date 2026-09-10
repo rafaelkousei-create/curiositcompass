@@ -13,7 +13,17 @@ const Input = z.object({
 const StorySchema = {
   type: "object",
   additionalProperties: false,
-  required: ["found", "name", "area", "category", "headline", "story", "distanceHint"],
+  required: [
+    "found",
+    "name",
+    "area",
+    "category",
+    "headline",
+    "story",
+    "distanceHint",
+    "lat",
+    "lng",
+  ],
   properties: {
     found: { type: "boolean" },
     name: { type: "string" },
@@ -22,6 +32,8 @@ const StorySchema = {
     headline: { type: "string" },
     story: { type: "string" },
     distanceHint: { type: "string" },
+    lat: { type: "number" },
+    lng: { type: "number" },
   },
 } as const;
 
@@ -33,6 +45,8 @@ export type LandmarkStory = {
   headline: string;
   story: string;
   distanceHint: string;
+  lat: number;
+  lng: number;
 };
 
 export const getNearbyStory = createServerFn({ method: "POST" })
