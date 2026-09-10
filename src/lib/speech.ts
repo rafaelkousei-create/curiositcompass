@@ -34,11 +34,15 @@ export async function speak(text: string, signal?: AbortSignal): Promise<void> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
-      signal,
+      signal: signal ?? null,
     });
     if (!res.ok || !res.body) throw new Error(`Narration failed (${res.status})`);
 
-    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    const reader = (
+      res.body as unknown as { pipeThrough: (t: TextDecoderStream) => ReadableStream<string> }
+    )
+      .pipeThrough(new TextDecoderStream())
+      .getReader();
     let buffer = "";
     while (true) {
       const { value, done } = await reader.read();

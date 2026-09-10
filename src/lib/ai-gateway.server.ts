@@ -8,7 +8,11 @@ export function requireLovableApiKey() {
 
 /** Reads an SSE body line by line and yields parsed `data:` payloads. */
 export async function* readSseEvents(body: ReadableStream<Uint8Array>) {
-  const reader = body.pipeThrough(new TextDecoderStream()).getReader();
+  const reader = (
+    body as unknown as { pipeThrough: (t: TextDecoderStream) => ReadableStream<string> }
+  )
+    .pipeThrough(new TextDecoderStream())
+    .getReader();
   let buffer = "";
   while (true) {
     const { value, done } = await reader.read();
