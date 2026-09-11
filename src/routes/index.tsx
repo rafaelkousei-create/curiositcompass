@@ -1,10 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Compass, History, Loader2, MapPin, Radio, SkipForward, Volume2 } from "lucide-react";
+import {
+  Compass,
+  History,
+  Loader2,
+  MapPin,
+  Mic,
+  Radio,
+  Search,
+  Send,
+  SkipForward,
+  Square,
+  Volume2,
+} from "lucide-react";
 
-import { getNearbyStory, type LandmarkStory } from "@/lib/landmark.functions";
+import { LandmarkMap } from "@/components/LandmarkMap";
+import { describeNearby, getNearbyStory, type LandmarkStory } from "@/lib/landmark.functions";
 import { speak } from "@/lib/speech";
+import { startRecording, transcribe, type Recorder } from "@/lib/transcribe";
 
 export const Route = createFileRoute("/")({
   head: () => ({
