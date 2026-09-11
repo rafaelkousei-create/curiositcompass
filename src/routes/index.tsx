@@ -1,10 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Compass, History, Loader2, MapPin, Radio, SkipForward, Volume2 } from "lucide-react";
+import {
+  Compass,
+  History,
+  Loader2,
+  MapPin,
+  Mic,
+  Radio,
+  Search,
+  Send,
+  SkipForward,
+  Square,
+  Volume2,
+} from "lucide-react";
 
-import { getNearbyStory, type LandmarkStory } from "@/lib/landmark.functions";
+import { LandmarkMap } from "@/components/LandmarkMap";
+import { describeNearby, getNearbyStory, type LandmarkStory } from "@/lib/landmark.functions";
 import { speak } from "@/lib/speech";
+import { startRecording, transcribe, type Recorder } from "@/lib/transcribe";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -46,6 +60,8 @@ function distance(a: [number, number], b: [number, number]) {
 
 function Index() {
   const fetchStory = useServerFn(getNearbyStory);
+  const fetchDescribed = useServerFn(describeNearby);
+
 
   const [status, setStatus] = useState<Status>("off");
   const [story, setStory] = useState<LandmarkStory | null>(null);
@@ -53,6 +69,12 @@ function Index() {
   const [error, setError] = useState<string | null>(null);
   const [coords, setCoords] = useState<[number, number] | null>(null);
   const [speed, setSpeed] = useState<number | null>(null);
+  const [askOpen, setAskOpen] = useState(false);
+  const [ask, setAsk] = useState("");
+  const [recording, setRecording] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const recorderRef = useRef<Recorder | null>(null);
+
 
   const watchRef = useRef<number | null>(null);
   const busyRef = useRef(false);
@@ -99,6 +121,93 @@ function Index() {
     },
     [fetchStory],
   );
+
+  const currentPoint = useCallback(async (): Promise<[number, number]> => {
+    if (coords) return coords;
+    if (!("geolocation" in navigator)) throw new Error("This device can't share its location.");
+    return await new Promise<[number, number]>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve([pos.coords.latitude, pos.coords.longitude]),
+        () => reject(new Error("Couldn't get your location — allow it and try again.")),
+        { enableHighAccuracy: true, timeout: 20000 },
+      );
+    });
+  }, [coords]);
+
+  const runDescribed = useCallback(
+    async (description: string) => {
+      const text = description.trim();
+      if (!text || asking) return;
+      abortRef.current?.abort();
+      abortRef.current = null;
+      busyRef.current = true;
+      setAsking(true);
+      setError(null);
+      setStatus("thinking");
+      try {
+        const point = await currentPoint();
+        setCoords(point);
+        const result = await fetchDescribed({
+          data: { lat: point[0], lng: point[1], description: text, mode: "driving" },
+        });
+        if (!result.found || !result.story) {
+          setError("I couldn't work out which place you mean — try adding a detail or two.");
+          return;
+        }
+        heardRef.current = [...heardRef.current, result.name].slice(-40);
+        setStory(result);
+        setHistory((prev) => [result, ...prev].slice(0, 30));
+        setAsk("");
+        setStatus("speaking");
+        const controller = new AbortController();
+        abortRef.current = controller;
+        await speak(
+          `${result.headline}. ${result.distanceHint}. ${result.story}`,
+          controller.signal,
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong");
+      } finally {
+        abortRef.current = null;
+        busyRef.current = false;
+        setAsking(false);
+        setStatus(runningRef.current ? "listening" : "off");
+      }
+    },
+    [asking, currentPoint, fetchDescribed],
+  );
+
+  const toggleRecording = useCallback(async () => {
+    if (recorderRef.current) {
+      const recorder = recorderRef.current;
+      recorderRef.current = null;
+      setRecording(false);
+      try {
+        const blob = await recorder.stop();
+        setAsking(true);
+        const text = await transcribe(blob);
+        setAsking(false);
+        if (!text) {
+          setError("I didn't catch that — try again.");
+          return;
+        }
+        setAsk(text);
+        void runDescribed(text);
+      } catch (err) {
+        setAsking(false);
+        setError(err instanceof Error ? err.message : "Couldn't understand that");
+      }
+      return;
+    }
+    try {
+      setError(null);
+      recorderRef.current = await startRecording();
+      setRecording(true);
+    } catch {
+      setError("Microphone access is needed to describe what you see.");
+    }
+  }, [runDescribed]);
+
 
   const stop = useCallback(() => {
     runningRef.current = false;
@@ -226,6 +335,61 @@ function Index() {
             </div>
           ) : null}
 
+          <div className="w-full">
+            <button
+              onClick={() => setAskOpen((prev) => !prev)}
+              className="mx-auto flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium"
+            >
+              <Search className="size-4 text-primary" />
+              Ask about a place
+            </button>
+
+            {askOpen ? (
+              <div className="mt-4 flex flex-col gap-3">
+                <p className="text-center text-xs text-muted-foreground">
+                  Describe what you see — “a big domed church on the left”, “what’s this bridge?”
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => void toggleRecording()}
+                    className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${
+                      recording
+                        ? "bg-destructive text-primary-foreground"
+                        : "border border-border text-foreground"
+                    }`}
+                  >
+                    {recording ? <Square className="size-4" /> : <Mic className="size-4" />}
+                    {recording ? "Stop & ask" : "Speak"}
+                  </button>
+                  <input
+                    value={ask}
+                    onChange={(event) => setAsk(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") void runDescribed(ask);
+                    }}
+                    placeholder="…or type what you see"
+                    className="min-w-0 flex-1 rounded-full border border-border bg-secondary px-4 py-2 text-sm outline-none focus:border-primary"
+                  />
+                  <button
+                    onClick={() => void runDescribed(ask)}
+                    disabled={!ask.trim() || asking}
+                    aria-label="Ask"
+                    className="grid size-10 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
+                  >
+                    {asking ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Send className="size-4" />
+                    )}
+                  </button>
+                </div>
+                {recording ? (
+                  <p className="text-center text-xs text-accent">Listening… tap “Stop &amp; ask”.</p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
           {error ? <p className="text-center text-sm text-destructive">{error}</p> : null}
         </div>
       </section>
@@ -238,6 +402,7 @@ function Index() {
           <h2 className="mt-2 text-2xl font-semibold">{story.name}</h2>
           <p className="mt-1 text-sm text-accent">{story.distanceHint}</p>
           <p className="mt-4 leading-relaxed text-foreground/90">{story.story}</p>
+          <LandmarkMap lat={story.lat} lng={story.lng} name={story.name} />
           <button
             onClick={() => {
               const current = story;

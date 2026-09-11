@@ -100,6 +100,63 @@ export const getNearbyStory = createServerFn({ method: "POST" })
     }
   });
 
+const DescribeInput = z.object({
+  lat: z.number(),
+  lng: z.number(),
+  description: z.string().min(2).max(400),
+  mode: z.enum(["driving", "walking"]).default("driving"),
+});
+
+export const describeNearby = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => DescribeInput.parse(input))
+  .handler(async ({ data }): Promise<LandmarkStory> => {
+    const instructions = [
+      "You are a warm, knowledgeable local guide.",
+      data.mode === "driving"
+        ? "The person is in a car and cannot look at a screen."
+        : "The person is on foot.",
+      "They describe something they can see near their GPS position. Work out which REAL place they",
+      "most likely mean - prefer visible landmarks, buildings, monuments, bridges, churches, squares,",
+      "statues, hills or streets close to those coordinates. Only name something you actually know",
+      "exists there. If you cannot confidently match their description, set found to false and leave",
+      "the other text fields as empty strings.",
+      "story: 70-130 words of spoken narration - vivid, factual, specific dates and names, no",
+      "greetings, no mention of coordinates or GPS, ready to be read aloud.",
+      "headline: max 8 words. area: the neighbourhood, town or city. category: e.g. 'Historic church'.",
+      "distanceHint: a short spoken cue like 'just on your right' or 'about 200 metres ahead'.",
+      "lat/lng: the real decimal coordinates of the place itself (use 0 and 0 only when found is false).",
+    ].join(" ");
+
+    const input = [
+      `Latitude: ${data.lat}`,
+      `Longitude: ${data.lng}`,
+      `They said: ${data.description}`,
+    ].join("\n");
+
+    const text = await generateStructuredText({
+      instructions,
+      input,
+      schema: StorySchema as unknown as Record<string, unknown>,
+      schemaName: "landmark_story",
+    });
+
+    try {
+      return StoryParser.parse(JSON.parse(text));
+    } catch {
+      return {
+        found: false,
+        name: "",
+        area: "",
+        category: "",
+        headline: "",
+        story: "",
+        distanceHint: "",
+        lat: 0,
+        lng: 0,
+      };
+    }
+  });
+
 const StoryParser = z.object({
   found: z.boolean(),
   name: z.string(),
