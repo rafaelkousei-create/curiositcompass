@@ -60,6 +60,8 @@ function distance(a: [number, number], b: [number, number]) {
 
 function Index() {
   const fetchStory = useServerFn(getNearbyStory);
+  const fetchDescribed = useServerFn(describeNearby);
+
 
   const [status, setStatus] = useState<Status>("off");
   const [story, setStory] = useState<LandmarkStory | null>(null);
@@ -67,6 +69,12 @@ function Index() {
   const [error, setError] = useState<string | null>(null);
   const [coords, setCoords] = useState<[number, number] | null>(null);
   const [speed, setSpeed] = useState<number | null>(null);
+  const [askOpen, setAskOpen] = useState(false);
+  const [ask, setAsk] = useState("");
+  const [recording, setRecording] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const recorderRef = useRef<Recorder | null>(null);
+
 
   const watchRef = useRef<number | null>(null);
   const busyRef = useRef(false);
