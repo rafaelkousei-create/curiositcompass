@@ -122,6 +122,93 @@ function Index() {
     [fetchStory],
   );
 
+  const currentPoint = useCallback(async (): Promise<[number, number]> => {
+    if (coords) return coords;
+    if (!("geolocation" in navigator)) throw new Error("This device can't share its location.");
+    return await new Promise<[number, number]>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve([pos.coords.latitude, pos.coords.longitude]),
+        () => reject(new Error("Couldn't get your location — allow it and try again.")),
+        { enableHighAccuracy: true, timeout: 20000 },
+      );
+    });
+  }, [coords]);
+
+  const runDescribed = useCallback(
+    async (description: string) => {
+      const text = description.trim();
+      if (!text || asking) return;
+      abortRef.current?.abort();
+      abortRef.current = null;
+      busyRef.current = true;
+      setAsking(true);
+      setError(null);
+      setStatus("thinking");
+      try {
+        const point = await currentPoint();
+        setCoords(point);
+        const result = await fetchDescribed({
+          data: { lat: point[0], lng: point[1], description: text, mode: "driving" },
+        });
+        if (!result.found || !result.story) {
+          setError("I couldn't work out which place you mean — try adding a detail or two.");
+          return;
+        }
+        heardRef.current = [...heardRef.current, result.name].slice(-40);
+        setStory(result);
+        setHistory((prev) => [result, ...prev].slice(0, 30));
+        setAsk("");
+        setStatus("speaking");
+        const controller = new AbortController();
+        abortRef.current = controller;
+        await speak(
+          `${result.headline}. ${result.distanceHint}. ${result.story}`,
+          controller.signal,
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong");
+      } finally {
+        abortRef.current = null;
+        busyRef.current = false;
+        setAsking(false);
+        setStatus(runningRef.current ? "listening" : "off");
+      }
+    },
+    [asking, currentPoint, fetchDescribed],
+  );
+
+  const toggleRecording = useCallback(async () => {
+    if (recorderRef.current) {
+      const recorder = recorderRef.current;
+      recorderRef.current = null;
+      setRecording(false);
+      try {
+        const blob = await recorder.stop();
+        setAsking(true);
+        const text = await transcribe(blob);
+        setAsking(false);
+        if (!text) {
+          setError("I didn't catch that — try again.");
+          return;
+        }
+        setAsk(text);
+        void runDescribed(text);
+      } catch (err) {
+        setAsking(false);
+        setError(err instanceof Error ? err.message : "Couldn't understand that");
+      }
+      return;
+    }
+    try {
+      setError(null);
+      recorderRef.current = await startRecording();
+      setRecording(true);
+    } catch {
+      setError("Microphone access is needed to describe what you see.");
+    }
+  }, [runDescribed]);
+
+
   const stop = useCallback(() => {
     runningRef.current = false;
     if (watchRef.current !== null) navigator.geolocation.clearWatch(watchRef.current);
