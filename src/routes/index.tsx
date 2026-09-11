@@ -402,6 +402,7 @@ function Index() {
           <h2 className="mt-2 text-2xl font-semibold">{story.name}</h2>
           <p className="mt-1 text-sm text-accent">{story.distanceHint}</p>
           <p className="mt-4 leading-relaxed text-foreground/90">{story.story}</p>
+          <LandmarkMap lat={story.lat} lng={story.lng} name={story.name} />
           <button
             onClick={() => {
               const current = story;
