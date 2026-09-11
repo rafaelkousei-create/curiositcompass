@@ -335,6 +335,61 @@ function Index() {
             </div>
           ) : null}
 
+          <div className="w-full">
+            <button
+              onClick={() => setAskOpen((prev) => !prev)}
+              className="mx-auto flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium"
+            >
+              <Search className="size-4 text-primary" />
+              Ask about a place
+            </button>
+
+            {askOpen ? (
+              <div className="mt-4 flex flex-col gap-3">
+                <p className="text-center text-xs text-muted-foreground">
+                  Describe what you see — “a big domed church on the left”, “what’s this bridge?”
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => void toggleRecording()}
+                    className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${
+                      recording
+                        ? "bg-destructive text-primary-foreground"
+                        : "border border-border text-foreground"
+                    }`}
+                  >
+                    {recording ? <Square className="size-4" /> : <Mic className="size-4" />}
+                    {recording ? "Stop & ask" : "Speak"}
+                  </button>
+                  <input
+                    value={ask}
+                    onChange={(event) => setAsk(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") void runDescribed(ask);
+                    }}
+                    placeholder="…or type what you see"
+                    className="min-w-0 flex-1 rounded-full border border-border bg-secondary px-4 py-2 text-sm outline-none focus:border-primary"
+                  />
+                  <button
+                    onClick={() => void runDescribed(ask)}
+                    disabled={!ask.trim() || asking}
+                    aria-label="Ask"
+                    className="grid size-10 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
+                  >
+                    {asking ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Send className="size-4" />
+                    )}
+                  </button>
+                </div>
+                {recording ? (
+                  <p className="text-center text-xs text-accent">Listening… tap “Stop &amp; ask”.</p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
           {error ? <p className="text-center text-sm text-destructive">{error}</p> : null}
         </div>
       </section>
