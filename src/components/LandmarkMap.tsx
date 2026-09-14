@@ -1,32 +1,114 @@
+import { useEffect, useRef } from "react";
+import type { Map as LeafletMap, Marker } from "leaflet";
+
+type Point = { lat: number; lng: number };
+
 type Props = {
-  lat: number;
-  lng: number;
-  name: string;
+  current: Point | null;
+  landmark: (Point & { name: string }) | null;
 };
 
-export function LandmarkMap({ lat, lng, name }: Props) {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return null;
+export function LandmarkMap({ current, landmark }: Props) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<LeafletMap | null>(null);
+  const currentMarkerRef = useRef<Marker | null>(null);
+  const landmarkMarkerRef = useRef<Marker | null>(null);
 
-  const span = 0.006;
-  const bbox = [lng - span, lat - span / 2, lng + span, lat + span / 2].join("%2C");
-  const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
+  useEffect(() => {
+    let disposed = false;
 
-  return (
-    <div className="mt-5 overflow-hidden rounded-2xl border border-border">
-      <iframe
-        title={`Map showing ${name}`}
-        src={src}
-        loading="lazy"
-        className="h-56 w-full border-0 sm:h-64"
-      />
-      <a
-        href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=17/${lat}/${lng}`}
-        target="_blank"
-        rel="noreferrer"
-        className="block bg-muted px-4 py-2 text-xs text-muted-foreground"
-      >
-        Open larger map
-      </a>
-    </div>
-  );
+    void import("leaflet").then((L) => {
+      if (disposed || !containerRef.current) return;
+
+      const map = L.map(containerRef.current, {
+        zoomControl: false,
+        attributionControl: true,
+      }).setView(current ? [current.lat, current.lng] : [20, 0], current ? 15 : 3);
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19,
+      }).addTo(map);
+      L.control.zoom({ position: "topright" }).addTo(map);
+      mapRef.current = map;
+    });
+
+    return () => {
+      disposed = true;
+      currentMarkerRef.current = null;
+      landmarkMarkerRef.current = null;
+      mapRef.current?.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    let active = true;
+    void import("leaflet").then((L) => {
+      if (!active || !mapRef.current) return;
+
+      if (current) {
+        const icon = L.divIcon({
+          className: "wayfarer-marker-shell",
+          html: '<span class="wayfarer-marker-current"><span></span></span>',
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+        });
+        if (currentMarkerRef.current) {
+          currentMarkerRef.current.setLatLng([current.lat, current.lng]);
+        } else {
+          currentMarkerRef.current = L.marker([current.lat, current.lng], { icon })
+            .addTo(map)
+            .bindTooltip("You are here", { direction: "top", offset: [0, -12] });
+        }
+      }
+
+      if (landmark) {
+        const icon = L.divIcon({
+          className: "wayfarer-marker-shell",
+          html: '<span class="wayfarer-marker-landmark"></span>',
+          iconSize: [34, 42],
+          iconAnchor: [17, 40],
+          popupAnchor: [0, -42],
+        });
+        if (landmarkMarkerRef.current) {
+          landmarkMarkerRef.current.setLatLng([landmark.lat, landmark.lng]).setIcon(icon);
+          landmarkMarkerRef.current.setTooltipContent(landmark.name);
+        } else {
+          landmarkMarkerRef.current = L.marker([landmark.lat, landmark.lng], { icon })
+            .addTo(map)
+            .bindTooltip(landmark.name, {
+              permanent: true,
+              direction: "top",
+              offset: [0, -36],
+              className: "wayfarer-map-label",
+            });
+        }
+      } else if (landmarkMarkerRef.current) {
+        landmarkMarkerRef.current.remove();
+        landmarkMarkerRef.current = null;
+      }
+
+      if (current && landmark) {
+        map.fitBounds(
+          [
+            [current.lat, current.lng],
+            [landmark.lat, landmark.lng],
+          ],
+          { paddingTopLeft: [60, 100], paddingBottomRight: [60, 330], maxZoom: 16 },
+        );
+      } else if (current) {
+        map.setView([current.lat, current.lng], Math.max(map.getZoom(), 15));
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [current, landmark]);
+
+  return <div ref={containerRef} className="h-full w-full" aria-label="Current location map" />;
 }

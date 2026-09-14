@@ -251,6 +251,15 @@ function Index() {
 
   useEffect(() => () => stop(), [stop]);
 
+  useEffect(() => {
+    if (!("geolocation" in navigator)) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setCoords([pos.coords.latitude, pos.coords.longitude]),
+      () => undefined,
+      { enableHighAccuracy: true, maximumAge: 15000, timeout: 12000 },
+    );
+  }, []);
+
   const on = status !== "off";
   const label: Record<Status, string> = {
     off: "Guide is off",
@@ -260,190 +269,182 @@ function Index() {
     speaking: "Telling you the story",
   };
 
+  const landmark =
+    story && Number.isFinite(story.lat) && Number.isFinite(story.lng) && (story.lat !== 0 || story.lng !== 0)
+      ? { lat: story.lat, lng: story.lng, name: story.name }
+      : null;
+
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-2xl flex-col gap-6 px-5 py-10">
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Compass className="size-5 text-primary" />
-          <span className="font-display text-lg font-semibold tracking-tight">Wayfarer</span>
+    <main className="relative h-dvh w-full overflow-hidden bg-background">
+      <h1 className="sr-only">Wayfarer landmark audio guide</h1>
+      <div className="absolute inset-0">
+        <LandmarkMap
+          current={coords ? { lat: coords[0], lng: coords[1] } : null}
+          landmark={landmark}
+        />
+      </div>
+
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-500 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 p-4 sm:p-6">
+        <div className="pointer-events-auto flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card/95 px-4 py-3 shadow-xl backdrop-blur-md">
+          <span className="grid size-9 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
+            <Compass className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate font-display text-lg font-semibold">Wayfarer</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {coords ? label[status] : "Finding your location…"}
+            </p>
+          </div>
         </div>
-        <span className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
-          Driving mode
-        </span>
+        <div className="pointer-events-auto flex shrink-0 items-center gap-2 rounded-lg border border-border bg-card/95 px-3 py-2 text-xs shadow-xl backdrop-blur-md">
+          <MapPin className={coords ? "size-4 text-accent" : "size-4 text-muted-foreground"} />
+          <span className="hidden sm:inline">{coords ? "Location found" : "Locating"}</span>
+          {speed !== null ? <span className="text-muted-foreground">{Math.round(speed * 3.6)} km/h</span> : null}
+        </div>
       </header>
 
-      <section className="surface rounded-3xl p-7">
-        <h1 className="text-3xl leading-tight font-semibold text-glow sm:text-4xl">
-          Every place you pass has a story.
-        </h1>
-        <p className="mt-3 text-sm text-muted-foreground">
-          Leave it running on the passenger seat. Wayfarer follows your GPS and, whenever something
-          worth knowing appears, it simply starts talking.
-        </p>
+      <section className="surface absolute inset-x-0 bottom-0 z-500 mx-auto flex max-h-[48dvh] min-h-[34dvh] w-full max-w-4xl flex-col overflow-y-auto rounded-t-2xl border-x-0 border-b-0 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:bottom-5 sm:max-h-[46dvh] sm:min-h-0 sm:w-[calc(100%-2.5rem)] sm:rounded-lg sm:border sm:p-5">
+        <div className="mx-auto mb-3 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/40 sm:hidden" />
 
-        <div className="mt-7 flex flex-col items-center gap-5">
+        {story ? (
+          <div className="mb-4 grid grid-cols-[minmax(0,1fr)_auto] gap-4 border-b border-border pb-4">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium text-primary uppercase">
+                {story.category} · {story.area}
+              </p>
+              <h2 className="mt-1 truncate text-xl font-semibold sm:text-2xl">{story.name}</h2>
+              <p className="mt-1 text-sm text-accent">{story.distanceHint}</p>
+              <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted-foreground sm:line-clamp-3">
+                {story.story}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                const current = story;
+                void (async () => {
+                  setStatus("speaking");
+                  const controller = new AbortController();
+                  abortRef.current = controller;
+                  try {
+                    await speak(current.story, controller.signal);
+                  } finally {
+                    abortRef.current = null;
+                    setStatus(runningRef.current ? "listening" : "off");
+                  }
+                })();
+              }}
+              aria-label="Play story again"
+              title="Play story again"
+              className="grid size-11 shrink-0 place-items-center rounded-full border border-border bg-secondary text-foreground"
+            >
+              <Volume2 className="size-5" />
+            </button>
+          </div>
+        ) : (
+          <div className="mb-4 border-b border-border pb-4">
+            <p className="font-display text-lg font-semibold">Every place has a story.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Start the guide or describe something you can see.
+            </p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
           <button
             onClick={on ? stop : start}
-            className="relative grid size-36 place-items-center rounded-full border border-border bg-secondary transition-transform active:scale-95"
+            aria-label={on ? "Stop guide" : "Start guide"}
+            className="relative grid size-16 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform active:scale-95 sm:size-20"
           >
-            {on ? (
-              <span className="pulse-ring absolute inset-0 rounded-full border-2 border-primary" />
-            ) : null}
-            <span className="flex flex-col items-center gap-1">
-              {status === "thinking" ? (
-                <Loader2 className="size-8 animate-spin text-primary" />
-              ) : status === "speaking" ? (
-                <Volume2 className="size-8 text-primary" />
-              ) : (
-                <Radio className={on ? "size-8 text-primary" : "size-8 text-muted-foreground"} />
-              )}
-              <span className="font-display text-sm font-semibold">{on ? "Stop" : "Start"}</span>
-            </span>
+            {on ? <span className="pulse-ring absolute inset-0 rounded-full border-2 border-primary" /> : null}
+            {status === "thinking" ? (
+              <Loader2 className="size-6 animate-spin" />
+            ) : status === "speaking" ? (
+              <Volume2 className="size-6" />
+            ) : (
+              <Radio className="size-6" />
+            )}
           </button>
 
-          <p className="text-sm text-muted-foreground">{label[status]}</p>
-
-          {on ? (
-            <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground">
-              {coords ? (
-                <span className="flex items-center gap-1 rounded-full bg-muted px-3 py-1">
-                  <MapPin className="size-3" />
-                  {coords[0].toFixed(4)}, {coords[1].toFixed(4)}
-                </span>
-              ) : null}
-              {speed !== null ? (
-                <span className="rounded-full bg-muted px-3 py-1">
-                  {Math.round(speed * 3.6)} km/h
-                </span>
-              ) : null}
-              <button
-                onClick={() => coords && void runStory(coords)}
-                disabled={status === "thinking" || status === "speaking"}
-                className="flex items-center gap-1 rounded-full bg-primary px-3 py-1 font-medium text-primary-foreground disabled:opacity-40"
-              >
-                <Radio className="size-3" />
-                Tell me something now
-              </button>
-              <button
-                onClick={() => coords && void runStory(coords, true)}
-                disabled={!coords}
-                className="flex items-center gap-1 rounded-full border border-border px-3 py-1 font-medium disabled:opacity-40"
-              >
-                <SkipForward className="size-3" />
-                Skip · next place
-              </button>
-            </div>
-          ) : null}
-
-          <div className="w-full">
+          <div className="grid min-w-0 grid-cols-2 gap-2">
+            <button
+              onClick={() => coords && void runStory(coords)}
+              disabled={!coords || status === "thinking" || status === "speaking"}
+              className="flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-md bg-secondary px-3 text-sm font-medium disabled:opacity-40"
+            >
+              <Radio className="size-4 shrink-0 text-primary" />
+              <span className="truncate">Tell me now</span>
+            </button>
+            <button
+              onClick={() => coords && void runStory(coords, true)}
+              disabled={!coords}
+              className="flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-md border border-border px-3 text-sm font-medium disabled:opacity-40"
+            >
+              <SkipForward className="size-4 shrink-0" />
+              <span className="truncate">Next place</span>
+            </button>
             <button
               onClick={() => setAskOpen((prev) => !prev)}
-              className="mx-auto flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium"
+              className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-md border border-border px-3 text-sm font-medium"
             >
               <Search className="size-4 text-primary" />
               Ask about a place
             </button>
-
-            {askOpen ? (
-              <div className="mt-4 flex flex-col gap-3">
-                <p className="text-center text-xs text-muted-foreground">
-                  Describe what you see — “a big domed church on the left”, “what’s this bridge?”
-                </p>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => void toggleRecording()}
-                    className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${
-                      recording
-                        ? "bg-destructive text-primary-foreground"
-                        : "border border-border text-foreground"
-                    }`}
-                  >
-                    {recording ? <Square className="size-4" /> : <Mic className="size-4" />}
-                    {recording ? "Stop & ask" : "Speak"}
-                  </button>
-                  <input
-                    value={ask}
-                    onChange={(event) => setAsk(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") void runDescribed(ask);
-                    }}
-                    placeholder="…or type what you see"
-                    className="min-w-0 flex-1 rounded-full border border-border bg-secondary px-4 py-2 text-sm outline-none focus:border-primary"
-                  />
-                  <button
-                    onClick={() => void runDescribed(ask)}
-                    disabled={!ask.trim() || asking}
-                    aria-label="Ask"
-                    className="grid size-10 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
-                  >
-                    {asking ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Send className="size-4" />
-                    )}
-                  </button>
-                </div>
-                {recording ? (
-                  <p className="text-center text-xs text-accent">Listening… tap “Stop &amp; ask”.</p>
-                ) : null}
-              </div>
-            ) : null}
           </div>
-
-          {error ? <p className="text-center text-sm text-destructive">{error}</p> : null}
         </div>
+
+        {askOpen ? (
+          <div className="mt-4 border-t border-border pt-4">
+            <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
+              <button
+                onClick={() => void toggleRecording()}
+                aria-label={recording ? "Stop recording and ask" : "Describe by voice"}
+                title={recording ? "Stop and ask" : "Describe by voice"}
+                className={`grid size-11 shrink-0 place-items-center rounded-full ${
+                  recording ? "bg-destructive text-destructive-foreground" : "bg-secondary text-foreground"
+                }`}
+              >
+                {recording ? <Square className="size-4" /> : <Mic className="size-5" />}
+              </button>
+              <input
+                value={ask}
+                onChange={(event) => setAsk(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") void runDescribed(ask);
+                }}
+                placeholder="Describe what you see…"
+                className="h-11 min-w-0 rounded-md border border-border bg-secondary px-3 text-sm outline-none focus:border-primary"
+              />
+              <button
+                onClick={() => void runDescribed(ask)}
+                disabled={!ask.trim() || asking}
+                aria-label="Ask"
+                className="grid size-11 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
+              >
+                {asking ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              </button>
+            </div>
+            {recording ? <p className="mt-2 text-center text-xs text-accent">Listening… tap the square when finished.</p> : null}
+          </div>
+        ) : null}
+
+        {error ? <p className="mt-3 text-center text-sm text-destructive">{error}</p> : null}
+
+        {history.length > 1 ? (
+          <details className="mt-3 border-t border-border pt-3">
+            <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+              <History className="size-4 text-primary" /> Along the way · {history.length - 1}
+            </summary>
+            <ul className="mt-3 space-y-2">
+              {history.slice(1).map((item, index) => (
+                <li key={`${item.name}-${index}`} className="text-sm">
+                  <span className="font-medium">{item.name}</span>
+                  <span className="text-muted-foreground"> · {item.headline}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
       </section>
-
-      {story ? (
-        <section className="surface rounded-3xl p-7">
-          <p className="text-xs tracking-[0.18em] text-primary uppercase">
-            {story.category} · {story.area}
-          </p>
-          <h2 className="mt-2 text-2xl font-semibold">{story.name}</h2>
-          <p className="mt-1 text-sm text-accent">{story.distanceHint}</p>
-          <p className="mt-4 leading-relaxed text-foreground/90">{story.story}</p>
-          <LandmarkMap lat={story.lat} lng={story.lng} name={story.name} />
-          <button
-            onClick={() => {
-              const current = story;
-              void (async () => {
-                setStatus("speaking");
-                const controller = new AbortController();
-                abortRef.current = controller;
-                try {
-                  await speak(current.story, controller.signal);
-                } finally {
-                  abortRef.current = null;
-                  setStatus(runningRef.current ? "listening" : "off");
-                }
-              })();
-            }}
-            className="mt-5 flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm"
-          >
-            <Volume2 className="size-4" /> Play again
-          </button>
-        </section>
-      ) : null}
-
-      {history.length > 1 ? (
-        <section className="surface rounded-3xl p-7">
-          <h2 className="flex items-center gap-2 text-lg font-semibold">
-            <History className="size-4 text-primary" /> Along the way
-          </h2>
-          <ul className="mt-4 space-y-3">
-            {history.slice(1).map((item, index) => (
-              <li key={`${item.name}-${index}`} className="border-t border-border pt-3 text-sm">
-                <p className="font-medium">{item.name}</p>
-                <p className="text-muted-foreground">{item.headline}</p>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <p className="pb-4 text-center text-xs text-muted-foreground">
-        Keep your eyes on the road — Wayfarer is made to be listened to, not looked at.
-      </p>
     </main>
   );
 }
