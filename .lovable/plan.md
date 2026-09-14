@@ -1,26 +1,26 @@
-# Ask about what you see
+# Map-first front page
 
-Add an "Ask / describe" control to the main screen. You describe something you can see — "a big domed church on the left", "what's this bridge?" — and Wayfarer works out what it is near your current position, shows it with the map pin, and reads the story aloud like any other landmark.
+Rebuild the main Wayfarer screen as a full-screen map experience, keeping the existing guide, skip, ask, narration, and history behavior.
 
-## How it works for you
+## What will change
 
-- A new **Ask about a place** button under the existing controls.
-- Tap it and you get two ways to ask:
-  - **Hold to speak** — say your description out loud, best while driving. Your words appear as text so you can see it understood you.
-  - **Type it** — a short text box for when you're a passenger or on foot.
-- Wayfarer uses your current GPS position plus your description to identify the most likely real place nearby.
-- The answer appears in the same story card as automatic stories: name, area, category, story text, map with pin, and spoken narration.
-- If it can't confidently match anything, it says so on screen instead of inventing a place.
-- Asking works whether the guide is running or off (it just needs a location fix), and it interrupts any narration in progress.
+- Make the map fill the screen and follow the user’s current GPS position.
+- Show a distinct second marker for the landmark currently being described.
+- Add a compact top bar for the Wayfarer name, driving status, and location state.
+- Place the existing Start/Stop, “Tell me something now”, Skip, and Ask controls in a fixed lower panel occupying roughly one third of the screen.
+- Present the current landmark story in the lower panel without obscuring map context; allow the content area to scroll when needed.
+- Keep typed and spoken descriptions, spoken narration, errors, and previous landmarks working as they do now.
+- Adapt the layout for phones and wider screens while preserving the map-first structure.
 
-## Technical notes
+## Technical details
 
-- New server function `describeNearby` in `src/lib/landmark.functions.ts`: input `{ lat, lng, description, mode }`, same `StorySchema` / `LandmarkStory` output so the existing card and `LandmarkMap` are reused unchanged. Instructions adapted: match the user's description to a real place near the coordinates, prefer visible landmarks, `found: false` when unsure, and populate `distanceHint` as a spoken directional cue.
-- New route `src/routes/api/transcribe.ts`: accepts a `multipart/form-data` audio upload, forwards it to `https://ai.gateway.lovable.dev/v1/audio/transcriptions` with `model: google/gemini-3.5-transcribe` and `stream: "true"`, streams the SSE body back. Uses `requireLovableApiKey()` from `ai-gateway.server.ts`; rejects empty/oversized uploads.
-- New client helper `src/lib/transcribe.ts`: records mic audio via Web Audio (ScriptProcessor → 16 kHz mono WAV, no MediaRecorder fragments), posts the complete WAV, parses `transcript.text.delta` / `transcript.text.done` events, returns the transcript.
-- `src/routes/index.tsx`: add an `asking` UI section (mic button + text input + transcript preview), a `runDescribed(text)` handler that aborts current narration, sets status `thinking`, calls `describeNearby`, then sets story/history and calls `speak(...)` — mirroring `runStory`'s busy/abort/running-ref handling. Add an `"asking"` status label. Also finish placing `<LandmarkMap lat={story.lat} lng={story.lng} name={story.name} />` inside the story card, which is still missing.
-- Errors from the gateway (including 402/429) surface in the existing `error` line rather than being swallowed.
+- Replace the separate story map with a single page-level OpenStreetMap view.
+- Update the map component to display current-position and landmark markers together and reframe around both when available.
+- Reorganize the existing home-screen markup and styling; no changes to landmark search, transcription, or narration services.
+- Preserve accessible labels and controls, and keep the existing page metadata.
 
 ## Verification
 
-Build, then drive the flow in Playwright with simulated coordinates: type a description, confirm a matching place, map pin, and narration request; check `/api/transcribe` with a synthesized spoken clip.
+- Check the screen with simulated GPS on desktop and mobile sizes.
+- Confirm current location appears, a described landmark adds its marker, and all existing controls remain usable.
+- Confirm the project builds without errors.
