@@ -73,7 +73,23 @@ export async function generateStructuredText(options: {
 
   if (!response.ok || !response.body) {
     const detail = await response.text().catch(() => "");
-    throw new Error(`AI request failed [${response.status}]: ${detail}`);
+    console.error(`AI request failed [${response.status}]: ${detail}`);
+
+    if (response.status === 402) {
+      throw new Error(
+        "This app is out of AI credits, so new stories can't be written right now. Top up in Lovable to continue.",
+      );
+    }
+    if (response.status === 403) {
+      throw new Error("AI access is currently blocked for this workspace.");
+    }
+    if (response.status === 429) {
+      throw new Error("Too many requests right now — give it a few seconds and try again.");
+    }
+    if (response.status >= 500) {
+      throw new Error("The story service is having a moment. Please try again.");
+    }
+    throw new Error("Couldn't write a story for this spot right now.");
   }
 
   let text = "";
