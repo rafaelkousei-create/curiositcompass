@@ -6,9 +6,10 @@ type Point = { lat: number; lng: number };
 type Props = {
   current: Point | null;
   landmark: (Point & { name: string }) | null;
+  recenterKey?: number;
 };
 
-export function LandmarkMap({ current, landmark }: Props) {
+export function LandmarkMap({ current, landmark, recenterKey = 0 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const currentMarkerRef = useRef<Marker | null>(null);
@@ -29,7 +30,6 @@ export function LandmarkMap({ current, landmark }: Props) {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         maxZoom: 19,
       }).addTo(map);
-      L.control.zoom({ position: "topright" }).addTo(map);
       mapRef.current = map;
     });
 
@@ -109,6 +109,13 @@ export function LandmarkMap({ current, landmark }: Props) {
       active = false;
     };
   }, [current, landmark]);
+
+  useEffect(() => {
+    if (!recenterKey) return;
+    const map = mapRef.current;
+    if (!map || !current) return;
+    map.setView([current.lat, current.lng], Math.max(map.getZoom(), 16), { animate: true });
+  }, [recenterKey, current]);
 
   return <div ref={containerRef} className="h-full w-full" aria-label="Current location map" />;
 }

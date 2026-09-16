@@ -2,20 +2,35 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Car,
   Compass,
+  Crosshair,
+  Footprints,
   History,
+  Info,
   Loader2,
   MapPin,
+  Menu,
   Mic,
   Radio,
   Search,
   Send,
   SkipForward,
   Square,
+  Trash2,
   Volume2,
+  VolumeX,
 } from "lucide-react";
 
 import { LandmarkMap } from "@/components/LandmarkMap";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { describeNearby, getNearbyStory, type LandmarkStory } from "@/lib/landmark.functions";
 import { speak } from "@/lib/speech";
 import { startRecording, transcribe, type Recorder } from "@/lib/transcribe";
@@ -73,7 +88,13 @@ function Index() {
   const [ask, setAsk] = useState("");
   const [recording, setRecording] = useState(false);
   const [asking, setAsking] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [mode, setMode] = useState<"driving" | "walking">("driving");
+  const [narration, setNarration] = useState(true);
+  const [recenterKey, setRecenterKey] = useState(0);
   const recorderRef = useRef<Recorder | null>(null);
+  const narrationRef = useRef(true);
+  const modeRef = useRef<"driving" | "walking">("driving");
 
 
   const watchRef = useRef<number | null>(null);
@@ -82,6 +103,18 @@ function Index() {
   const heardRef = useRef<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const runningRef = useRef(false);
+
+  const narrate = useCallback(async (text: string) => {
+    if (!narrationRef.current) return;
+    setStatus("speaking");
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      await speak(text, controller.signal);
+    } finally {
+      abortRef.current = null;
+    }
+  }, []);
 
   const runStory = useCallback(
     async (point: [number, number], force = false) => {
@@ -97,7 +130,7 @@ function Index() {
       setError(null);
       try {
         const result = await fetchStory({
-          data: { lat: point[0], lng: point[1], heard: heardRef.current, mode: "driving" },
+          data: { lat: point[0], lng: point[1], heard: heardRef.current, mode: modeRef.current },
         });
         if (!runningRef.current) return;
         if (!result.found || !result.story) {
@@ -107,10 +140,7 @@ function Index() {
         heardRef.current = [...heardRef.current, result.name].slice(-40);
         setStory(result);
         setHistory((prev) => [result, ...prev].slice(0, 30));
-        setStatus("speaking");
-        const controller = new AbortController();
-        abortRef.current = controller;
-        await speak(`${result.headline}. ${result.distanceHint}. ${result.story}`, controller.signal);
+        await narrate(`${result.headline}. ${result.distanceHint}. ${result.story}`);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong");
       } finally {
@@ -119,7 +149,7 @@ function Index() {
         if (runningRef.current) setStatus("listening");
       }
     },
-    [fetchStory],
+    [fetchStory, narrate],
   );
 
   const currentPoint = useCallback(async (): Promise<[number, number]> => {
@@ -148,7 +178,7 @@ function Index() {
         const point = await currentPoint();
         setCoords(point);
         const result = await fetchDescribed({
-          data: { lat: point[0], lng: point[1], description: text, mode: "driving" },
+          data: { lat: point[0], lng: point[1], description: text, mode: modeRef.current },
         });
         if (!result.found || !result.story) {
           setError("I couldn't work out which place you mean — try adding a detail or two.");
@@ -158,13 +188,7 @@ function Index() {
         setStory(result);
         setHistory((prev) => [result, ...prev].slice(0, 30));
         setAsk("");
-        setStatus("speaking");
-        const controller = new AbortController();
-        abortRef.current = controller;
-        await speak(
-          `${result.headline}. ${result.distanceHint}. ${result.story}`,
-          controller.signal,
-        );
+        await narrate(`${result.headline}. ${result.distanceHint}. ${result.story}`);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong");
       } finally {
@@ -174,7 +198,7 @@ function Index() {
         setStatus(runningRef.current ? "listening" : "off");
       }
     },
-    [asking, currentPoint, fetchDescribed],
+    [asking, currentPoint, fetchDescribed, narrate],
   );
 
   const toggleRecording = useCallback(async () => {
@@ -260,6 +284,25 @@ function Index() {
     );
   }, []);
 
+  useEffect(() => {
+    narrationRef.current = narration;
+  }, [narration]);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
+  const replay = useCallback(
+    (item: LandmarkStory) => {
+      abortRef.current?.abort();
+      void (async () => {
+        await narrate(`${item.headline}. ${item.distanceHint}. ${item.story}`);
+        setStatus(runningRef.current ? "listening" : "off");
+      })();
+    },
+    [narrate],
+  );
+
   const on = status !== "off";
   const label: Record<Status, string> = {
     off: "Guide is off",
@@ -281,26 +324,165 @@ function Index() {
         <LandmarkMap
           current={coords ? { lat: coords[0], lng: coords[1] } : null}
           landmark={landmark}
+          recenterKey={recenterKey}
         />
       </div>
 
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-500 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 p-4 sm:p-6">
-        <div className="pointer-events-auto flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card/95 px-4 py-3 shadow-xl backdrop-blur-md">
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-500 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 p-3 sm:gap-3 sm:p-6">
+        <div className="pointer-events-auto flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card/95 px-3 py-2.5 shadow-xl backdrop-blur-md sm:px-4 sm:py-3">
           <span className="grid size-9 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
             <Compass className="size-5" />
           </span>
           <div className="min-w-0">
-            <p className="truncate font-display text-lg font-semibold">Wayfarer</p>
+            <p className="truncate font-display text-base font-semibold sm:text-lg">Wayfarer</p>
             <p className="truncate text-xs text-muted-foreground">
               {coords ? label[status] : "Finding your location…"}
             </p>
           </div>
         </div>
-        <div className="pointer-events-auto flex shrink-0 items-center gap-2 rounded-lg border border-border bg-card/95 px-3 py-2 text-xs shadow-xl backdrop-blur-md">
+        <div className="pointer-events-auto flex shrink-0 items-center gap-2 rounded-lg border border-border bg-card/95 px-2.5 py-2 text-xs shadow-xl backdrop-blur-md sm:px-3">
           <MapPin className={coords ? "size-4 text-accent" : "size-4 text-muted-foreground"} />
           <span className="hidden sm:inline">{coords ? "Location found" : "Locating"}</span>
           {speed !== null ? <span className="text-muted-foreground">{Math.round(speed * 3.6)} km/h</span> : null}
         </div>
+
+        <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+          <SheetTrigger
+            aria-label="Open menu"
+            className="pointer-events-auto grid size-11 shrink-0 place-items-center rounded-lg border border-border bg-card/95 shadow-xl backdrop-blur-md"
+          >
+            <Menu className="size-5" />
+          </SheetTrigger>
+          <SheetContent side="left" className="z-1000 w-[19rem] overflow-y-auto sm:w-[21rem]">
+            <SheetHeader>
+              <SheetTitle className="font-display">Wayfarer</SheetTitle>
+              <SheetDescription>Stories of the places you pass, read aloud.</SheetDescription>
+            </SheetHeader>
+
+            <div className="mt-6 space-y-6 text-sm">
+              <div className="space-y-2">
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Guide</p>
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    if (on) stop();
+                    else start();
+                  }}
+                  className="flex min-h-11 w-full items-center gap-3 rounded-md bg-secondary px-3 text-left font-medium"
+                >
+                  <Radio className="size-4 text-primary" />
+                  {on ? "Stop guide" : "Start guide"}
+                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setMode("driving")}
+                    className={`flex min-h-11 items-center justify-center gap-2 rounded-md border px-2 ${
+                      mode === "driving" ? "border-primary bg-primary/15 text-foreground" : "border-border"
+                    }`}
+                  >
+                    <Car className="size-4" /> Driving
+                  </button>
+                  <button
+                    onClick={() => setMode("walking")}
+                    className={`flex min-h-11 items-center justify-center gap-2 rounded-md border px-2 ${
+                      mode === "walking" ? "border-primary bg-primary/15 text-foreground" : "border-border"
+                    }`}
+                  >
+                    <Footprints className="size-4" /> Walking
+                  </button>
+                </div>
+                <button
+                  onClick={() => {
+                    setRecenterKey((prev) => prev + 1);
+                    setMenuOpen(false);
+                  }}
+                  disabled={!coords}
+                  className="flex min-h-11 w-full items-center gap-3 rounded-md border border-border px-3 text-left disabled:opacity-40"
+                >
+                  <Crosshair className="size-4 text-primary" /> Recentre map on me
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Voice</p>
+                <button
+                  onClick={() => setNarration((prev) => !prev)}
+                  className="flex min-h-11 w-full items-center gap-3 rounded-md border border-border px-3 text-left"
+                >
+                  {narration ? (
+                    <Volume2 className="size-4 text-primary" />
+                  ) : (
+                    <VolumeX className="size-4 text-muted-foreground" />
+                  )}
+                  {narration ? "Narration on" : "Narration off (text only)"}
+                </button>
+                <button
+                  onClick={() => {
+                    if (!story) return;
+                    setMenuOpen(false);
+                    replay(story);
+                  }}
+                  disabled={!story || !narration}
+                  className="flex min-h-11 w-full items-center gap-3 rounded-md border border-border px-3 text-left disabled:opacity-40"
+                >
+                  <Radio className="size-4 text-primary" /> Repeat last story
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Places along the way
+                </p>
+                {history.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nothing yet — start the guide.</p>
+                ) : (
+                  <>
+                    <ul className="space-y-1">
+                      {history.map((item, index) => (
+                        <li key={`${item.name}-${index}`}>
+                          <button
+                            onClick={() => {
+                              setStory(item);
+                              setMenuOpen(false);
+                              replay(item);
+                            }}
+                            className="w-full rounded-md px-2 py-2 text-left hover:bg-secondary"
+                          >
+                            <span className="block truncate font-medium">{item.name}</span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {item.headline}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      onClick={() => {
+                        setHistory([]);
+                        heardRef.current = [];
+                      }}
+                      className="flex min-h-11 w-full items-center gap-3 rounded-md border border-border px-3 text-left text-muted-foreground"
+                    >
+                      <Trash2 className="size-4" /> Clear history
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <div className="space-y-2 border-t border-border pt-4 text-xs text-muted-foreground">
+                <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Info className="size-4 text-primary" /> About
+                </p>
+                <p>
+                  Wayfarer follows your location and tells you the story of the landmarks around you,
+                  out loud.
+                </p>
+                <p>Keep your eyes on the road — the guide speaks so you don't have to look.</p>
+                <p>Map data © OpenStreetMap contributors.</p>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
       </header>
 
       <section className="surface absolute inset-x-0 bottom-0 z-500 mx-auto flex max-h-[48dvh] min-h-[34dvh] w-full max-w-4xl flex-col overflow-y-auto rounded-t-2xl border-x-0 border-b-0 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:bottom-5 sm:max-h-[46dvh] sm:min-h-0 sm:w-[calc(100%-2.5rem)] sm:rounded-lg sm:border sm:p-5">
@@ -319,20 +501,7 @@ function Index() {
               </p>
             </div>
             <button
-              onClick={() => {
-                const current = story;
-                void (async () => {
-                  setStatus("speaking");
-                  const controller = new AbortController();
-                  abortRef.current = controller;
-                  try {
-                    await speak(current.story, controller.signal);
-                  } finally {
-                    abortRef.current = null;
-                    setStatus(runningRef.current ? "listening" : "off");
-                  }
-                })();
-              }}
+              onClick={() => replay(story)}
               aria-label="Play story again"
               title="Play story again"
               className="grid size-11 shrink-0 place-items-center rounded-full border border-border bg-secondary text-foreground"
