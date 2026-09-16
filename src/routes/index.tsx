@@ -284,6 +284,25 @@ function Index() {
     );
   }, []);
 
+  useEffect(() => {
+    narrationRef.current = narration;
+  }, [narration]);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
+  const replay = useCallback(
+    (item: LandmarkStory) => {
+      abortRef.current?.abort();
+      void (async () => {
+        await narrate(`${item.headline}. ${item.distanceHint}. ${item.story}`);
+        setStatus(runningRef.current ? "listening" : "off");
+      })();
+    },
+    [narrate],
+  );
+
   const on = status !== "off";
   const label: Record<Status, string> = {
     off: "Guide is off",
