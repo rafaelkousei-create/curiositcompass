@@ -178,7 +178,7 @@ function Index() {
         const point = await currentPoint();
         setCoords(point);
         const result = await fetchDescribed({
-          data: { lat: point[0], lng: point[1], description: text, mode: "driving" },
+          data: { lat: point[0], lng: point[1], description: text, mode: modeRef.current },
         });
         if (!result.found || !result.story) {
           setError("I couldn't work out which place you mean — try adding a detail or two.");
@@ -188,13 +188,7 @@ function Index() {
         setStory(result);
         setHistory((prev) => [result, ...prev].slice(0, 30));
         setAsk("");
-        setStatus("speaking");
-        const controller = new AbortController();
-        abortRef.current = controller;
-        await speak(
-          `${result.headline}. ${result.distanceHint}. ${result.story}`,
-          controller.signal,
-        );
+        await narrate(`${result.headline}. ${result.distanceHint}. ${result.story}`);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong");
       } finally {
