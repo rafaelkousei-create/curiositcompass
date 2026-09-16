@@ -198,7 +198,7 @@ function Index() {
         setStatus(runningRef.current ? "listening" : "off");
       }
     },
-    [asking, currentPoint, fetchDescribed],
+    [asking, currentPoint, fetchDescribed, narrate],
   );
 
   const toggleRecording = useCallback(async () => {
