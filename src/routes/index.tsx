@@ -104,6 +104,18 @@ function Index() {
   const abortRef = useRef<AbortController | null>(null);
   const runningRef = useRef(false);
 
+  const narrate = useCallback(async (text: string) => {
+    if (!narrationRef.current) return;
+    setStatus("speaking");
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      await speak(text, controller.signal);
+    } finally {
+      abortRef.current = null;
+    }
+  }, []);
+
   const runStory = useCallback(
     async (point: [number, number], force = false) => {
       if (busyRef.current) {
