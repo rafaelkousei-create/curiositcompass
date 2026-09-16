@@ -130,7 +130,7 @@ function Index() {
       setError(null);
       try {
         const result = await fetchStory({
-          data: { lat: point[0], lng: point[1], heard: heardRef.current, mode: "driving" },
+          data: { lat: point[0], lng: point[1], heard: heardRef.current, mode: modeRef.current },
         });
         if (!runningRef.current) return;
         if (!result.found || !result.story) {
@@ -140,10 +140,7 @@ function Index() {
         heardRef.current = [...heardRef.current, result.name].slice(-40);
         setStory(result);
         setHistory((prev) => [result, ...prev].slice(0, 30));
-        setStatus("speaking");
-        const controller = new AbortController();
-        abortRef.current = controller;
-        await speak(`${result.headline}. ${result.distanceHint}. ${result.story}`, controller.signal);
+        await narrate(`${result.headline}. ${result.distanceHint}. ${result.story}`);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong");
       } finally {
@@ -152,7 +149,7 @@ function Index() {
         if (runningRef.current) setStatus("listening");
       }
     },
-    [fetchStory],
+    [fetchStory, narrate],
   );
 
   const currentPoint = useCallback(async (): Promise<[number, number]> => {
