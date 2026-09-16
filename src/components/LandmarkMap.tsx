@@ -6,6 +6,7 @@ type Point = { lat: number; lng: number };
 type Props = {
   current: Point | null;
   landmark: (Point & { name: string }) | null;
+  recenterKey?: number;
 };
 
 export function LandmarkMap({ current, landmark }: Props) {
@@ -29,7 +30,6 @@ export function LandmarkMap({ current, landmark }: Props) {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         maxZoom: 19,
       }).addTo(map);
-      L.control.zoom({ position: "topright" }).addTo(map);
       mapRef.current = map;
     });
 
