@@ -2,20 +2,35 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Car,
   Compass,
+  Crosshair,
+  Footprints,
   History,
+  Info,
   Loader2,
   MapPin,
+  Menu,
   Mic,
   Radio,
   Search,
   Send,
   SkipForward,
   Square,
+  Trash2,
   Volume2,
+  VolumeX,
 } from "lucide-react";
 
 import { LandmarkMap } from "@/components/LandmarkMap";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { describeNearby, getNearbyStory, type LandmarkStory } from "@/lib/landmark.functions";
 import { speak } from "@/lib/speech";
 import { startRecording, transcribe, type Recorder } from "@/lib/transcribe";
@@ -73,7 +88,13 @@ function Index() {
   const [ask, setAsk] = useState("");
   const [recording, setRecording] = useState(false);
   const [asking, setAsking] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [mode, setMode] = useState<"driving" | "walking">("driving");
+  const [narration, setNarration] = useState(true);
+  const [recenterKey, setRecenterKey] = useState(0);
   const recorderRef = useRef<Recorder | null>(null);
+  const narrationRef = useRef(true);
+  const modeRef = useRef<"driving" | "walking">("driving");
 
 
   const watchRef = useRef<number | null>(null);
