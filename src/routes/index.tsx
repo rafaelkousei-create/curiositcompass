@@ -341,7 +341,7 @@ function Index() {
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
           <SheetTrigger
             aria-label="Open menu"
-            className="pointer-events-auto grid size-11 shrink-0 place-items-center rounded-lg border border-border bg-card/95 shadow-xl backdrop-blur-md"
+            className="pointer-events-auto grid w-11 shrink-0 place-items-center self-stretch rounded-lg border border-border bg-card/95 shadow-xl backdrop-blur-md"
           >
             <Menu className="size-5" />
           </SheetTrigger>
