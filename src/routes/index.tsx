@@ -320,8 +320,8 @@ function Index() {
         />
       </div>
 
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-500 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 p-3 sm:gap-3 sm:p-6">
-        <div className="pointer-events-auto flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card/95 px-3 py-2.5 shadow-xl backdrop-blur-md sm:px-4 sm:py-3">
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-500 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 p-3 sm:gap-3 sm:p-6">
+        <div className="pointer-events-auto col-start-2 flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card/95 px-3 py-2.5 shadow-xl backdrop-blur-md sm:px-4 sm:py-3">
           <span className="grid size-9 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
             <Compass className="size-5" />
           </span>
@@ -332,7 +332,7 @@ function Index() {
             </p>
           </div>
         </div>
-        <div className="pointer-events-auto flex shrink-0 items-center gap-2 rounded-lg border border-border bg-card/95 px-2.5 py-2 text-xs shadow-xl backdrop-blur-md sm:px-3">
+        <div className="pointer-events-auto col-start-3 flex shrink-0 items-center gap-2 rounded-lg border border-border bg-card/95 px-2.5 py-2 text-xs shadow-xl backdrop-blur-md sm:px-3">
           <MapPin className={coords ? "size-4 text-accent" : "size-4 text-muted-foreground"} />
           <span className="hidden sm:inline">{coords ? "Location found" : "Locating"}</span>
           {speed !== null ? <span className="text-muted-foreground">{Math.round(speed * 3.6)} km/h</span> : null}
