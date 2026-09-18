@@ -320,7 +320,7 @@ function Index() {
         />
       </div>
 
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-500 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 p-3 sm:gap-3 sm:p-6">
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-500 grid grid-cols-[auto_minmax(0,1fr)_auto] items-stretch gap-2 p-3 sm:gap-3 sm:p-6">
         <div className="pointer-events-auto col-start-2 flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card/95 px-3 py-2.5 shadow-xl backdrop-blur-md sm:px-4 sm:py-3">
           <span className="grid size-9 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
             <Compass className="size-5" />
