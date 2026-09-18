@@ -2,10 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Car,
   Compass,
   Crosshair,
-  Footprints,
   History,
   Info,
   Loader2,
@@ -89,12 +87,10 @@ function Index() {
   const [recording, setRecording] = useState(false);
   const [asking, setAsking] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [mode, setMode] = useState<"driving" | "walking">("driving");
   const [narration, setNarration] = useState(true);
   const [recenterKey, setRecenterKey] = useState(0);
   const recorderRef = useRef<Recorder | null>(null);
   const narrationRef = useRef(true);
-  const modeRef = useRef<"driving" | "walking">("driving");
 
 
   const watchRef = useRef<number | null>(null);
@@ -130,7 +126,7 @@ function Index() {
       setError(null);
       try {
         const result = await fetchStory({
-          data: { lat: point[0], lng: point[1], heard: heardRef.current, mode: modeRef.current },
+          data: { lat: point[0], lng: point[1], heard: heardRef.current },
         });
         if (!runningRef.current) return;
         if (!result.found || !result.story) {
@@ -178,7 +174,7 @@ function Index() {
         const point = await currentPoint();
         setCoords(point);
         const result = await fetchDescribed({
-          data: { lat: point[0], lng: point[1], description: text, mode: modeRef.current },
+          data: { lat: point[0], lng: point[1], description: text },
         });
         if (!result.found || !result.story) {
           setError("I couldn't work out which place you mean — try adding a detail or two.");
@@ -288,10 +284,6 @@ function Index() {
     narrationRef.current = narration;
   }, [narration]);
 
-  useEffect(() => {
-    modeRef.current = mode;
-  }, [mode]);
-
   const replay = useCallback(
     (item: LandmarkStory) => {
       abortRef.current?.abort();
@@ -328,8 +320,8 @@ function Index() {
         />
       </div>
 
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-500 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 p-3 sm:gap-3 sm:p-6">
-        <div className="pointer-events-auto flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card/95 px-3 py-2.5 shadow-xl backdrop-blur-md sm:px-4 sm:py-3">
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-500 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 p-3 sm:gap-3 sm:p-6">
+        <div className="pointer-events-auto col-start-2 flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card/95 px-3 py-2.5 shadow-xl backdrop-blur-md sm:px-4 sm:py-3">
           <span className="grid size-9 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
             <Compass className="size-5" />
           </span>
@@ -340,7 +332,7 @@ function Index() {
             </p>
           </div>
         </div>
-        <div className="pointer-events-auto flex shrink-0 items-center gap-2 rounded-lg border border-border bg-card/95 px-2.5 py-2 text-xs shadow-xl backdrop-blur-md sm:px-3">
+        <div className="pointer-events-auto col-start-3 flex shrink-0 items-center gap-2 rounded-lg border border-border bg-card/95 px-2.5 py-2 text-xs shadow-xl backdrop-blur-md sm:px-3">
           <MapPin className={coords ? "size-4 text-accent" : "size-4 text-muted-foreground"} />
           <span className="hidden sm:inline">{coords ? "Location found" : "Locating"}</span>
           {speed !== null ? <span className="text-muted-foreground">{Math.round(speed * 3.6)} km/h</span> : null}
@@ -373,24 +365,6 @@ function Index() {
                   <Radio className="size-4 text-primary" />
                   {on ? "Stop guide" : "Start guide"}
                 </button>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setMode("driving")}
-                    className={`flex min-h-11 items-center justify-center gap-2 rounded-md border px-2 ${
-                      mode === "driving" ? "border-primary bg-primary/15 text-foreground" : "border-border"
-                    }`}
-                  >
-                    <Car className="size-4" /> Driving
-                  </button>
-                  <button
-                    onClick={() => setMode("walking")}
-                    className={`flex min-h-11 items-center justify-center gap-2 rounded-md border px-2 ${
-                      mode === "walking" ? "border-primary bg-primary/15 text-foreground" : "border-border"
-                    }`}
-                  >
-                    <Footprints className="size-4" /> Walking
-                  </button>
-                </div>
                 <button
                   onClick={() => {
                     setRecenterKey((prev) => prev + 1);
