@@ -126,7 +126,7 @@ function Index() {
       setError(null);
       try {
         const result = await fetchStory({
-          data: { lat: point[0], lng: point[1], heard: heardRef.current, mode: modeRef.current },
+          data: { lat: point[0], lng: point[1], heard: heardRef.current },
         });
         if (!runningRef.current) return;
         if (!result.found || !result.story) {
@@ -174,7 +174,7 @@ function Index() {
         const point = await currentPoint();
         setCoords(point);
         const result = await fetchDescribed({
-          data: { lat: point[0], lng: point[1], description: text, mode: modeRef.current },
+          data: { lat: point[0], lng: point[1], description: text },
         });
         if (!result.found || !result.story) {
           setError("I couldn't work out which place you mean — try adding a detail or two.");
@@ -284,10 +284,6 @@ function Index() {
     narrationRef.current = narration;
   }, [narration]);
 
-  useEffect(() => {
-    modeRef.current = mode;
-  }, [mode]);
-
   const replay = useCallback(
     (item: LandmarkStory) => {
       abortRef.current?.abort();
@@ -369,24 +365,6 @@ function Index() {
                   <Radio className="size-4 text-primary" />
                   {on ? "Stop guide" : "Start guide"}
                 </button>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setMode("driving")}
-                    className={`flex min-h-11 items-center justify-center gap-2 rounded-md border px-2 ${
-                      mode === "driving" ? "border-primary bg-primary/15 text-foreground" : "border-border"
-                    }`}
-                  >
-                    <Car className="size-4" /> Driving
-                  </button>
-                  <button
-                    onClick={() => setMode("walking")}
-                    className={`flex min-h-11 items-center justify-center gap-2 rounded-md border px-2 ${
-                      mode === "walking" ? "border-primary bg-primary/15 text-foreground" : "border-border"
-                    }`}
-                  >
-                    <Footprints className="size-4" /> Walking
-                  </button>
-                </div>
                 <button
                   onClick={() => {
                     setRecenterKey((prev) => prev + 1);
