@@ -2,10 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Car,
   Compass,
   Crosshair,
-  Footprints,
   History,
   Info,
   Loader2,
@@ -89,12 +87,10 @@ function Index() {
   const [recording, setRecording] = useState(false);
   const [asking, setAsking] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [mode, setMode] = useState<"driving" | "walking">("driving");
   const [narration, setNarration] = useState(true);
   const [recenterKey, setRecenterKey] = useState(0);
   const recorderRef = useRef<Recorder | null>(null);
   const narrationRef = useRef(true);
-  const modeRef = useRef<"driving" | "walking">("driving");
 
 
   const watchRef = useRef<number | null>(null);
