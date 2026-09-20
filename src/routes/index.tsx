@@ -8,6 +8,7 @@ import {
   Info,
   Loader2,
   MapPin,
+  Megaphone,
   Menu,
   Mic,
   Radio,
@@ -320,28 +321,27 @@ function Index() {
         />
       </div>
 
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-500 grid grid-cols-[auto_minmax(0,1fr)_auto] items-stretch gap-2 p-3 sm:gap-3 sm:p-6">
-        <div className="pointer-events-auto col-start-2 flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card/95 px-3 py-2.5 shadow-xl backdrop-blur-md sm:px-4 sm:py-3">
-          <span className="grid size-9 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
-            <Compass className="size-5" />
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-500 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 p-3 sm:gap-3 sm:p-6">
+        <div className="pointer-events-auto col-start-2 flex h-10 w-fit max-w-full min-w-0 items-center gap-2.5 justify-self-start rounded-full border border-border bg-card/85 pl-1.5 pr-4 shadow-md backdrop-blur-md sm:h-11">
+          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
+            <Compass className="size-4" />
           </span>
-          <div className="min-w-0">
-            <p className="truncate font-display text-base font-semibold sm:text-lg">Wayfarer</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {coords ? label[status] : "Finding your location…"}
-            </p>
-          </div>
+          <span className="shrink-0 font-display text-sm font-semibold">Wayfarer</span>
+          <span className="min-w-0 truncate text-xs text-muted-foreground">
+            {coords ? label[status] : "Finding your location…"}
+          </span>
         </div>
-        <div className="pointer-events-auto col-start-3 flex shrink-0 items-center gap-2 rounded-lg border border-border bg-card/95 px-2.5 py-2 text-xs shadow-xl backdrop-blur-md sm:px-3">
-          <MapPin className={coords ? "size-4 text-accent" : "size-4 text-muted-foreground"} />
-          <span className="hidden sm:inline">{coords ? "Location found" : "Locating"}</span>
-          {speed !== null ? <span className="text-muted-foreground">{Math.round(speed * 3.6)} km/h</span> : null}
+        <div className="pointer-events-auto col-start-3 flex h-10 shrink-0 items-center rounded-full border border-border bg-card/85 px-3 shadow-md backdrop-blur-md sm:h-11">
+          <MapPin className={coords ? "size-4 text-primary" : "size-4 text-muted-foreground"} />
+          {speed !== null ? (
+            <span className="ml-1.5 text-xs text-muted-foreground">{Math.round(speed * 3.6)} km/h</span>
+          ) : null}
         </div>
 
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
           <SheetTrigger
             aria-label="Open menu"
-            className="pointer-events-auto col-start-1 row-start-1 grid w-11 shrink-0 place-items-center self-stretch rounded-lg border border-border bg-card/95 shadow-xl backdrop-blur-md"
+            className="pointer-events-auto col-start-1 row-start-1 grid size-10 shrink-0 place-items-center rounded-full border border-border bg-card/85 shadow-md backdrop-blur-md sm:size-11"
           >
             <Menu className="size-5" />
           </SheetTrigger>
@@ -459,17 +459,17 @@ function Index() {
         </Sheet>
       </header>
 
-      <section className="surface absolute inset-x-0 bottom-0 z-500 mx-auto flex max-h-[48dvh] min-h-[34dvh] w-full max-w-4xl flex-col overflow-y-auto rounded-t-2xl border-x-0 border-b-0 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:bottom-5 sm:max-h-[46dvh] sm:min-h-0 sm:w-[calc(100%-2.5rem)] sm:rounded-lg sm:border sm:p-5">
+      <section className="surface absolute inset-x-0 bottom-0 z-500 mx-auto flex max-h-[52dvh] w-full max-w-4xl flex-col overflow-y-auto rounded-t-2xl border-x-0 border-b-0 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:bottom-5 sm:max-h-[46dvh] sm:w-[calc(100%-2.5rem)] sm:rounded-lg sm:border sm:p-5">
         <div className="mx-auto mb-3 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/40 sm:hidden" />
 
         {story ? (
           <div className="mb-4 grid grid-cols-[minmax(0,1fr)_auto] gap-4 border-b border-border pb-4">
             <div className="min-w-0">
-              <p className="truncate text-xs font-medium text-primary uppercase">
+              <p className="truncate text-xs font-medium tracking-wide text-muted-foreground uppercase">
                 {story.category} · {story.area}
               </p>
               <h2 className="mt-1 truncate text-xl font-semibold sm:text-2xl">{story.name}</h2>
-              <p className="mt-1 text-sm text-accent">{story.distanceHint}</p>
+              <p className="mt-1 text-sm font-medium text-primary">{story.distanceHint}</p>
               <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted-foreground sm:line-clamp-3">
                 {story.story}
               </p>
@@ -492,7 +492,7 @@ function Index() {
           </div>
         )}
 
-        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
+        <div className="flex items-center gap-3">
           <button
             onClick={on ? stop : start}
             aria-label={on ? "Stop guide" : "Start guide"}
@@ -508,32 +508,35 @@ function Index() {
             )}
           </button>
 
-          <div className="grid min-w-0 grid-cols-2 gap-2">
+          <div className="flex flex-1 items-center justify-center gap-2.5">
             <button
               onClick={() => coords && void runStory(coords)}
               disabled={!coords || status === "thinking" || status === "speaking"}
-              className="flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-md bg-secondary px-3 text-sm font-medium disabled:opacity-40"
+              aria-label="Tell me a story now"
+              title="Tell me now"
+              className="grid size-12 shrink-0 place-items-center rounded-full border border-border bg-secondary disabled:opacity-40"
             >
-              <Radio className="size-4 shrink-0 text-primary" />
-              <span className="truncate">Tell me now</span>
+              <Megaphone className="size-5 text-primary" />
             </button>
             <button
               onClick={() => coords && void runStory(coords, true)}
               disabled={!coords}
-              className="flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-md border border-border px-3 text-sm font-medium disabled:opacity-40"
+              aria-label="Skip to the next place"
+              title="Next place"
+              className="grid size-12 shrink-0 place-items-center rounded-full border border-border disabled:opacity-40"
             >
-              <SkipForward className="size-4 shrink-0" />
-              <span className="truncate">Next place</span>
-            </button>
-            <button
-              onClick={() => setAskOpen((prev) => !prev)}
-              className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-md border border-border px-3 text-sm font-medium"
-            >
-              <Search className="size-4 text-primary" />
-              Ask about a place
+              <SkipForward className="size-5" />
             </button>
           </div>
         </div>
+
+        <button
+          onClick={() => setAskOpen((prev) => !prev)}
+          className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-full border border-border px-3 text-sm font-medium"
+        >
+          <Search className="size-4 text-primary" />
+          Ask about a place
+        </button>
 
         {askOpen ? (
           <div className="mt-4 border-t border-border pt-4">
@@ -566,7 +569,7 @@ function Index() {
                 {asking ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
               </button>
             </div>
-            {recording ? <p className="mt-2 text-center text-xs text-accent">Listening… tap the square when finished.</p> : null}
+            {recording ? <p className="mt-2 text-center text-xs text-primary">Listening… tap the square when finished.</p> : null}
           </div>
         ) : null}
 
