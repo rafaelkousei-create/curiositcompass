@@ -492,7 +492,7 @@ function Index() {
           </div>
         )}
 
-        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
+        <div className="flex items-center gap-3">
           <button
             onClick={on ? stop : start}
             aria-label={on ? "Stop guide" : "Start guide"}
@@ -508,32 +508,35 @@ function Index() {
             )}
           </button>
 
-          <div className="grid min-w-0 grid-cols-2 gap-2">
+          <div className="flex flex-1 items-center justify-center gap-2.5">
             <button
               onClick={() => coords && void runStory(coords)}
               disabled={!coords || status === "thinking" || status === "speaking"}
-              className="flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-md bg-secondary px-3 text-sm font-medium disabled:opacity-40"
+              aria-label="Tell me a story now"
+              title="Tell me now"
+              className="grid size-12 shrink-0 place-items-center rounded-full border border-border bg-secondary disabled:opacity-40"
             >
-              <Radio className="size-4 shrink-0 text-primary" />
-              <span className="truncate">Tell me now</span>
+              <Megaphone className="size-5 text-primary" />
             </button>
             <button
               onClick={() => coords && void runStory(coords, true)}
               disabled={!coords}
-              className="flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-md border border-border px-3 text-sm font-medium disabled:opacity-40"
+              aria-label="Skip to the next place"
+              title="Next place"
+              className="grid size-12 shrink-0 place-items-center rounded-full border border-border disabled:opacity-40"
             >
-              <SkipForward className="size-4 shrink-0" />
-              <span className="truncate">Next place</span>
-            </button>
-            <button
-              onClick={() => setAskOpen((prev) => !prev)}
-              className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-md border border-border px-3 text-sm font-medium"
-            >
-              <Search className="size-4 text-primary" />
-              Ask about a place
+              <SkipForward className="size-5" />
             </button>
           </div>
         </div>
+
+        <button
+          onClick={() => setAskOpen((prev) => !prev)}
+          className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-full border border-border px-3 text-sm font-medium"
+        >
+          <Search className="size-4 text-primary" />
+          Ask about a place
+        </button>
 
         {askOpen ? (
           <div className="mt-4 border-t border-border pt-4">
@@ -566,7 +569,7 @@ function Index() {
                 {asking ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
               </button>
             </div>
-            {recording ? <p className="mt-2 text-center text-xs text-accent">Listening… tap the square when finished.</p> : null}
+            {recording ? <p className="mt-2 text-center text-xs text-primary">Listening… tap the square when finished.</p> : null}
           </div>
         ) : null}
 
