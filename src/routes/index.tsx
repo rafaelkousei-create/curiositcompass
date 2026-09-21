@@ -8,7 +8,6 @@ import {
   Info,
   Loader2,
   MapPin,
-  Megaphone,
   Menu,
   Mic,
   Radio,
@@ -509,15 +508,6 @@ function Index() {
           </button>
 
           <div className="flex flex-1 items-center justify-center gap-2.5">
-            <button
-              onClick={() => coords && void runStory(coords)}
-              disabled={!coords || status === "thinking" || status === "speaking"}
-              aria-label="Tell me a story now"
-              title="Tell me now"
-              className="grid size-12 shrink-0 place-items-center rounded-full border border-border bg-secondary disabled:opacity-40"
-            >
-              <Megaphone className="size-5 text-primary" />
-            </button>
             <button
               onClick={() => coords && void runStory(coords, true)}
               disabled={!coords}
