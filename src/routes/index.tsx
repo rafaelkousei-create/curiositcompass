@@ -98,6 +98,12 @@ function Index() {
   const abortRef = useRef<AbortController | null>(null);
   const runningRef = useRef(false);
   const runIdRef = useRef(0);
+  const nextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const coordsRef = useRef<[number, number] | null>(null);
+  const runStoryRef = useRef<((p: [number, number], f?: boolean) => Promise<void>) | null>(null);
+  useEffect(() => {
+    coordsRef.current = coords;
+  }, [coords]);
 
   const narrate = useCallback(async (text: string) => {
     if (!narrationRef.current) return;
@@ -121,11 +127,14 @@ function Index() {
         busyRef.current = false;
       }
       if (busyRef.current) return;
+      if (nextTimerRef.current) clearTimeout(nextTimerRef.current);
+      nextTimerRef.current = null;
       const run = ++runIdRef.current;
       busyRef.current = true;
       lastPointRef.current = point;
       setStatus("thinking");
       setError(null);
+      let delay = 30000;
       try {
         const result = await fetchStory({
           data: { lat: point[0], lng: point[1], heard: heardRef.current },
@@ -140,6 +149,7 @@ function Index() {
         setStory(result);
         setHistory((prev) => [result, ...prev].slice(0, 30));
         await narrate(`${result.headline}. ${result.distanceHint}. ${result.story}`);
+        delay = 1500;
       } catch (err) {
         if (run !== runIdRef.current) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
@@ -149,11 +159,20 @@ function Index() {
           abortRef.current = null;
           busyRef.current = false;
           setStatus(runningRef.current ? "listening" : "off");
+          // Keep going on our own until the user presses Stop.
+          if (runningRef.current) {
+            nextTimerRef.current = setTimeout(() => {
+              nextTimerRef.current = null;
+              const here = coordsRef.current;
+              if (runningRef.current && here) void runStoryRef.current?.(here);
+            }, delay);
+          }
         }
       }
     },
     [fetchStory, narrate],
   );
+  runStoryRef.current = runStory;
 
   const currentPoint = useCallback(async (): Promise<[number, number]> => {
     if (coords) return coords;
@@ -245,6 +264,8 @@ function Index() {
 
   const stop = useCallback(() => {
     runningRef.current = false;
+    if (nextTimerRef.current) clearTimeout(nextTimerRef.current);
+    nextTimerRef.current = null;
     if (watchRef.current !== null) navigator.geolocation.clearWatch(watchRef.current);
     watchRef.current = null;
     abortRef.current?.abort();
