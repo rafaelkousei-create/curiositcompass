@@ -227,7 +227,14 @@ function Index() {
       return;
     }
     try {
+      // Fresh question: forget the previous search and stop any narration.
       setError(null);
+      setAsk("");
+      runIdRef.current++;
+      abortRef.current?.abort();
+      abortRef.current = null;
+      busyRef.current = false;
+      setStatus(runningRef.current ? "listening" : "off");
       recorderRef.current = await startRecording();
       setRecording(true);
     } catch {
@@ -528,46 +535,29 @@ function Index() {
         </div>
 
         <button
-          onClick={() => setAskOpen((prev) => !prev)}
-          className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-full border border-border px-3 text-sm font-medium"
+          onClick={() => void toggleRecording()}
+          disabled={asking}
+          aria-label={recording ? "Stop recording and ask" : "Ask about a place by voice"}
+          className={`mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-full border px-3 text-sm font-medium disabled:opacity-60 ${
+            recording ? "border-destructive bg-destructive text-destructive-foreground" : "border-border"
+          }`}
         >
-          <Search className="size-4 text-primary" />
-          Ask about a place
+          {asking ? (
+            <>
+              <Loader2 className="size-4 animate-spin text-primary" /> Looking it up…
+            </>
+          ) : recording ? (
+            <>
+              <Square className="size-4" /> Listening… tap to ask
+            </>
+          ) : (
+            <>
+              <Mic className="size-4 text-primary" /> Ask about a place
+            </>
+          )}
         </button>
-
-        {askOpen ? (
-          <div className="mt-4 border-t border-border pt-4">
-            <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
-              <button
-                onClick={() => void toggleRecording()}
-                aria-label={recording ? "Stop recording and ask" : "Describe by voice"}
-                title={recording ? "Stop and ask" : "Describe by voice"}
-                className={`grid size-11 shrink-0 place-items-center rounded-full ${
-                  recording ? "bg-destructive text-destructive-foreground" : "bg-secondary text-foreground"
-                }`}
-              >
-                {recording ? <Square className="size-4" /> : <Mic className="size-5" />}
-              </button>
-              <input
-                value={ask}
-                onChange={(event) => setAsk(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") void runDescribed(ask);
-                }}
-                placeholder="Describe what you see…"
-                className="h-11 min-w-0 rounded-md border border-border bg-secondary px-3 text-sm outline-none focus:border-primary"
-              />
-              <button
-                onClick={() => void runDescribed(ask)}
-                disabled={!ask.trim() || asking}
-                aria-label="Ask"
-                className="grid size-11 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
-              >
-                {asking ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-              </button>
-            </div>
-            {recording ? <p className="mt-2 text-center text-xs text-primary">Listening… tap the square when finished.</p> : null}
-          </div>
+        {ask && !recording ? (
+          <p className="mt-2 truncate text-center text-xs text-muted-foreground">“{ask}”</p>
         ) : null}
 
         {error ? <p className="mt-3 text-center text-sm text-destructive">{error}</p> : null}
