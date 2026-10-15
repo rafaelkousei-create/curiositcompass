@@ -1,11 +1,32 @@
 /** Streams narration audio from /api/speech and plays it as it arrives. */
+let shared: AudioContext | null = null;
+
+function getCtx(): AudioContext {
+  if (!shared || shared.state === "closed") {
+    const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    shared = new AudioCtx({ sampleRate: 24000 });
+  }
+  return shared;
+}
+
+/** Call from a tap handler so the browser allows later automatic playback. */
+export function unlockAudio() {
+  const ctx = getCtx();
+  if (ctx.state === "suspended") void ctx.resume().catch(() => {});
+  const src = ctx.createBufferSource();
+  src.buffer = ctx.createBuffer(1, 1, 24000);
+  src.connect(ctx.destination);
+  src.start();
+}
+
 export async function speak(text: string, signal?: AbortSignal): Promise<void> {
-  const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-  const ctx = new AudioCtx({ sampleRate: 24000 });
+  const ctx = getCtx();
   if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+  const out = ctx.createGain();
+  out.connect(ctx.destination);
   // Cut off any already-scheduled audio the instant narration is cancelled.
   signal?.addEventListener("abort", () => {
-    if (ctx.state !== "closed") void ctx.close().catch(() => {});
+    out.disconnect();
   });
   if (signal?.aborted) return;
 
@@ -26,7 +47,7 @@ export async function speak(text: string, signal?: AbortSignal): Promise<void> {
     buffer.copyToChannel(floats, 0);
     const source = ctx.createBufferSource();
     source.buffer = buffer;
-    source.connect(ctx.destination);
+    source.connect(out);
     if (playhead === 0) playhead = ctx.currentTime + 0.08;
     else playhead = Math.max(playhead, ctx.currentTime);
     source.start(playhead);
@@ -87,6 +108,6 @@ export async function speak(text: string, signal?: AbortSignal): Promise<void> {
     if (signal?.aborted || (error as { name?: string } | null)?.name === "AbortError") return;
     throw error;
   } finally {
-    await ctx.close().catch(() => {});
+    out.disconnect();
   }
 }
