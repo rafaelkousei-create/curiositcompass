@@ -82,6 +82,10 @@ export async function speak(text: string, signal?: AbortSignal): Promise<void> {
         resolve();
       });
     });
+  } catch (error) {
+    // Skipping or stopping narration aborts the request on purpose — not an error.
+    if (signal?.aborted || (error as { name?: string } | null)?.name === "AbortError") return;
+    throw error;
   } finally {
     await ctx.close().catch(() => {});
   }
