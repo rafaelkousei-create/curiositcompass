@@ -264,6 +264,8 @@ function Index() {
 
   const stop = useCallback(() => {
     runningRef.current = false;
+    if (nextTimerRef.current) clearTimeout(nextTimerRef.current);
+    nextTimerRef.current = null;
     if (watchRef.current !== null) navigator.geolocation.clearWatch(watchRef.current);
     watchRef.current = null;
     abortRef.current?.abort();
