@@ -28,7 +28,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { describeNearby, getNearbyStory, type LandmarkStory } from "@/lib/landmark.functions";
-import { speak, unlockAudio } from "@/lib/speech";
+import { pauseAudio, resumeAudio, speak, unlockAudio } from "@/lib/speech";
 import { startRecording, transcribe, type Recorder } from "@/lib/transcribe";
 
 export const Route = createFileRoute("/")({
@@ -85,6 +85,7 @@ function Index() {
   const [asking, setAsking] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [narration, setNarration] = useState(true);
+  const [paused, setPaused] = useState(false);
   const [recenterKey, setRecenterKey] = useState(0);
   const recorderRef = useRef<Recorder | null>(null);
   const narrationRef = useRef(true);
@@ -101,12 +102,14 @@ function Index() {
   const narrate = useCallback(async (text: string) => {
     if (!narrationRef.current) return;
     setStatus("speaking");
+    setPaused(false);
     const controller = new AbortController();
     abortRef.current = controller;
     try {
       await speak(text, controller.signal);
     } finally {
       abortRef.current = null;
+      setPaused(false);
     }
   }, []);
 
@@ -488,12 +491,21 @@ function Index() {
               </p>
             </div>
             <button
-              onClick={() => replay(story)}
-              aria-label="Play story again"
-              title="Play story again"
+              onClick={() => {
+                if (status === "speaking") {
+                  if (paused) resumeAudio();
+                  else pauseAudio();
+                  setPaused(!paused);
+                } else {
+                  unlockAudio();
+                  replay(story);
+                }
+              }}
+              aria-label={status === "speaking" ? (paused ? "Continue story" : "Pause story") : "Play story again"}
+              title={status === "speaking" ? (paused ? "Continue story" : "Pause story") : "Play story again"}
               className="grid size-11 shrink-0 place-items-center rounded-full border border-border bg-secondary text-foreground"
             >
-              <Volume2 className="size-5" />
+              {status === "speaking" && !paused ? <VolumeX className="size-5" /> : <Volume2 className="size-5" />}
             </button>
           </div>
         ) : (
