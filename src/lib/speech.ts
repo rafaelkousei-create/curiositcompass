@@ -19,9 +19,17 @@ export function unlockAudio() {
   src.start();
 }
 
+export function pauseAudio() {
+  if (shared && shared.state === "running") void shared.suspend().catch(() => {});
+}
+
+export function resumeAudio() {
+  if (shared && shared.state === "suspended") void shared.resume().catch(() => {});
+}
+
 export async function speak(text: string, signal?: AbortSignal): Promise<void> {
   const ctx = getCtx();
-  if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+  await ctx.resume().catch(() => {});
   const out = ctx.createGain();
   out.connect(ctx.destination);
   // Cut off any already-scheduled audio the instant narration is cancelled.
@@ -95,13 +103,14 @@ export async function speak(text: string, signal?: AbortSignal): Promise<void> {
       }
     }
 
-    const remaining = Math.max(0, lastEnd - ctx.currentTime) * 1000;
+    // Wait until scheduled audio has played (paused time doesn't count).
     await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, remaining + 150);
-      signal?.addEventListener("abort", () => {
-        clearTimeout(timer);
-        resolve();
-      });
+      const timer = setInterval(() => {
+        if (signal?.aborted || ctx.currentTime >= lastEnd + 0.1) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 150);
     });
   } catch (error) {
     // Skipping or stopping narration aborts the request on purpose — not an error.
