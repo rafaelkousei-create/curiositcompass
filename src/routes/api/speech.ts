@@ -41,8 +41,12 @@ export const Route = createFileRoute("/api/speech")({
             headers: { "Content-Type": "text/event-stream" },
           });
         } catch (error) {
-          if (request.signal.aborted) return new Response(null, { status: 499 });
-          throw error;
+          const name = (error as { name?: string } | null)?.name;
+          if (request.signal.aborted || name === "AbortError" || name === "TimeoutError") {
+            return new Response(null, { status: 499 });
+          }
+          console.error("TTS request error:", error);
+          return new Response("Narration failed", { status: 502 });
         }
       },
     },
