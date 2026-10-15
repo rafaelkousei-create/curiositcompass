@@ -11,8 +11,6 @@ import {
   Menu,
   Mic,
   Radio,
-  Search,
-  Send,
   SkipForward,
   Square,
   Trash2,
@@ -82,7 +80,6 @@ function Index() {
   const [error, setError] = useState<string | null>(null);
   const [coords, setCoords] = useState<[number, number] | null>(null);
   const [speed, setSpeed] = useState<number | null>(null);
-  const [askOpen, setAskOpen] = useState(false);
   const [ask, setAsk] = useState("");
   const [recording, setRecording] = useState(false);
   const [asking, setAsking] = useState(false);
