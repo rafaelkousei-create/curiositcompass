@@ -28,7 +28,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { describeNearby, getNearbyStory, type LandmarkStory } from "@/lib/landmark.functions";
-import { speak } from "@/lib/speech";
+import { speak, unlockAudio } from "@/lib/speech";
 import { startRecording, transcribe, type Recorder } from "@/lib/transcribe";
 
 export const Route = createFileRoute("/")({
@@ -255,9 +255,12 @@ function Index() {
       setError("This device can't share its location.");
       return;
     }
+    unlockAudio();
     runningRef.current = true;
     setError(null);
     setStatus("waiting");
+    lastPointRef.current = null;
+    if (coords) void runStory(coords);
     watchRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const point: [number, number] = [pos.coords.latitude, pos.coords.longitude];
@@ -278,7 +281,7 @@ function Index() {
       },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 },
     );
-  }, [runStory]);
+  }, [coords, runStory]);
 
   useEffect(() => () => stop(), [stop]);
 
@@ -520,7 +523,10 @@ function Index() {
 
           <div className="flex flex-1 items-center justify-center gap-2.5">
             <button
-              onClick={() => coords && void runStory(coords, true)}
+              onClick={() => {
+                unlockAudio();
+                if (coords) void runStory(coords, true);
+              }}
               disabled={!coords}
               aria-label="Skip to the next place"
               title="Next place"
@@ -532,7 +538,10 @@ function Index() {
         </div>
 
         <button
-          onClick={() => void toggleRecording()}
+          onClick={() => {
+            unlockAudio();
+            void toggleRecording();
+          }}
           disabled={asking}
           aria-label={recording ? "Stop recording and ask" : "Ask about a place by voice"}
           className={`mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-full border px-3 text-sm font-medium disabled:opacity-60 ${
