@@ -3,6 +3,11 @@ export async function speak(text: string, signal?: AbortSignal): Promise<void> {
   const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   const ctx = new AudioCtx({ sampleRate: 24000 });
   if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+  // Cut off any already-scheduled audio the instant narration is cancelled.
+  signal?.addEventListener("abort", () => {
+    if (ctx.state !== "closed") void ctx.close().catch(() => {});
+  });
+  if (signal?.aborted) return;
 
   let playhead = 0;
   let pending = new Uint8Array(0);

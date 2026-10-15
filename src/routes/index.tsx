@@ -99,6 +99,7 @@ function Index() {
   const heardRef = useRef<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const runningRef = useRef(false);
+  const runIdRef = useRef(0);
 
   const narrate = useCallback(async (text: string) => {
     if (!narrationRef.current) return;
@@ -114,12 +115,13 @@ function Index() {
 
   const runStory = useCallback(
     async (point: [number, number], force = false) => {
-      if (busyRef.current) {
-        if (!force) return;
+      if (force) {
         abortRef.current?.abort();
         abortRef.current = null;
         busyRef.current = false;
       }
+      if (busyRef.current) return;
+      const run = ++runIdRef.current;
       busyRef.current = true;
       lastPointRef.current = point;
       setStatus("thinking");
@@ -128,9 +130,10 @@ function Index() {
         const result = await fetchStory({
           data: { lat: point[0], lng: point[1], heard: heardRef.current },
         });
-        if (!runningRef.current) return;
+        if (run !== runIdRef.current) return;
+        if (!runningRef.current && !force) return;
         if (!result.found || !result.story) {
-          setStatus("listening");
+          setStatus(runningRef.current ? "listening" : "off");
           return;
         }
         heardRef.current = [...heardRef.current, result.name].slice(-40);
@@ -138,11 +141,15 @@ function Index() {
         setHistory((prev) => [result, ...prev].slice(0, 30));
         await narrate(`${result.headline}. ${result.distanceHint}. ${result.story}`);
       } catch (err) {
+        if (run !== runIdRef.current) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
         setError(err instanceof Error ? err.message : "Something went wrong");
       } finally {
-        abortRef.current = null;
-        busyRef.current = false;
-        if (runningRef.current) setStatus("listening");
+        if (run === runIdRef.current) {
+          abortRef.current = null;
+          busyRef.current = false;
+          setStatus(runningRef.current ? "listening" : "off");
+        }
       }
     },
     [fetchStory, narrate],
