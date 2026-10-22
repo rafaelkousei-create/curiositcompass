@@ -8,7 +8,7 @@ import "@lovable.dev/cloud-auth-js/styles.css";
 
 export const Route = createFileRoute("/login")({
   ssr: false,
-  validateSearch: (s: Record<string, unknown>) => ({ next: oauthReturnPath(s.next) }),
+  validateSearch: (s: Record<string, unknown>) => ({ next: oauthReturnPath(s["next"]) }),
   head: () => ({ meta: [
     { title: "Sign in — Curiosity Compass" },
     { name: "description", content: "Sign in to securely connect your assistant to Curiosity Compass." },

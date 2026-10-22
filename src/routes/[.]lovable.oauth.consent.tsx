@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 type Details = { client?: { name?: string; redirect_uri?: string }; redirect_uri?: string; scope?: string; scopes?: string[]; redirect_url?: string; redirect_to?: string };
 export const Route = createFileRoute("/.lovable/oauth/consent")({
   ssr: false,
-  validateSearch: (s: Record<string, unknown>) => ({ authorization_id: typeof s.authorization_id === "string" ? s.authorization_id : "" }),
+  validateSearch: (s: Record<string, unknown>) => ({ authorization_id: typeof s["authorization_id"] === "string" ? s["authorization_id"] : "" }),
   head: () => ({ meta: [
     { title: "Connect your assistant — Curiosity Compass" },
     { name: "description", content: "Review and approve secure assistant access to Curiosity Compass." },
@@ -32,7 +32,7 @@ export const Route = createFileRoute("/.lovable/oauth/consent")({
     const session = await supabase.auth.getSession();
     return { details, email: session.data.session?.user.email };
   },
-  errorComponent: ({ error }) => <main className="flex min-h-dvh items-center justify-center bg-background px-5"><div className="max-w-sm space-y-4"><h1 className="text-xl font-semibold">Could not connect your assistant</h1><p role="alert" className="text-sm text-muted-foreground">{error.message}</p><Button asChild variant="outline"><a href="/">Return to the guide</a></Button></div></main>,
+  errorComponent: ({ error }) => <main className="flex min-h-dvh items-center justify-center bg-background px-5"><div className="max-w-sm space-y-4"><h1 className="text-xl font-semibold">Could not connect your assistant</h1><p role="alert" className="text-sm text-muted-foreground">{error instanceof Error ? error.message : "Could not load this connection request."}</p><Button asChild variant="outline"><a href="/">Return to the guide</a></Button></div></main>,
   component: Consent,
 });
 
