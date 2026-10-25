@@ -1,8 +1,6 @@
-const GATEWAY = "https://ai.gateway.lovable.dev/v1";
-
-export function requireLovableApiKey() {
-  const key = process.env["LOVABLE_API_KEY"];
-  if (!key) throw new Error("Missing LOVABLE_API_KEY");
+export function requireOpenAiKey() {
+  const key = process.env["OPENAI_API_KEY"];
+  if (!key) throw new Error("Missing OPENAI_API_KEY");
   return key;
 }
 
@@ -34,57 +32,42 @@ export async function* readSseEvents(body: ReadableStream<Uint8Array>) {
   }
 }
 
-/**
- * Streaming call to the Lovable AI Gateway Responses API.
- * Streams on the wire (required for reasoning models) but returns the final text.
- */
+/** Asks OpenAI for JSON that matches `schema`; returns it as a JSON string. */
 export async function generateStructuredText(options: {
   instructions: string;
   input: string;
   schema: Record<string, unknown>;
   schemaName: string;
 }) {
-  const key = requireLovableApiKey();
+  const key = requireOpenAiKey();
 
-  const response = await fetch(`${GATEWAY}/responses`, {
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      "Lovable-API-Key": key,
-      "X-Lovable-AIG-SDK": "fetch",
+      "content-type": "application/json",
+      Authorization: `Bearer ${key}`,
     },
     body: JSON.stringify({
-      model: "openai/gpt-6-astra",
-      instructions: options.instructions,
-      input: options.input,
-      stream: true,
-      store: false,
-      reasoning: { effort: "low" },
-      text: {
-        format: {
-          type: "json_schema",
-          name: options.schemaName,
-          strict: true,
-          schema: options.schema,
-        },
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: options.instructions },
+        { role: "user", content: options.input },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: options.schemaName, strict: true, schema: options.schema },
       },
     }),
   });
 
-  if (!response.ok || !response.body) {
+  if (!response.ok) {
     const detail = await response.text().catch(() => "");
     console.error(`AI request failed [${response.status}]: ${detail}`);
-
-    if (response.status === 402) {
-      throw new Error(
-        "This app is out of AI credits, so new stories can't be written right now. Top up in Lovable to continue.",
-      );
-    }
-    if (response.status === 403) {
-      throw new Error("AI access is currently blocked for this workspace.");
-    }
     if (response.status === 429) {
-      throw new Error("Too many requests right now — give it a few seconds and try again.");
+      throw new Error("Too many requests, or the OpenAI credit is used up. Try again shortly.");
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("The AI key is missing or not allowed.");
     }
     if (response.status >= 500) {
       throw new Error("The story service is having a moment. Please try again.");
@@ -92,11 +75,8 @@ export async function generateStructuredText(options: {
     throw new Error("Couldn't write a story for this spot right now.");
   }
 
-  let text = "";
-  for await (const event of readSseEvents(response.body)) {
-    if (event["type"] === "response.output_text.delta" && typeof event["delta"] === "string") {
-      text += event["delta"];
-    }
-  }
-  return text;
+  const data = (await response.json()) as {
+    choices?: { message?: { content?: string | null } }[];
+  };
+  return data.choices?.[0]?.message?.content ?? "{}";
 }

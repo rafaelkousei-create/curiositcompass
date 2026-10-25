@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { requireLovableApiKey } from "@/lib/ai-gateway.server";
+import { requireOpenAiKey } from "@/lib/ai-gateway.server";
 
 export const Route = createFileRoute("/api/speech")({
   server: {
@@ -10,17 +10,17 @@ export const Route = createFileRoute("/api/speech")({
         const text = typeof body?.text === "string" ? body.text.trim() : "";
         if (!text) return new Response("Missing text", { status: 400 });
 
-        const key = requireLovableApiKey();
+        const key = requireOpenAiKey();
 
         try {
-          const response = await fetch("https://ai.gateway.lovable.dev/v1/audio/speech", {
+          const response = await fetch("https://api.openai.com/v1/audio/speech", {
             method: "POST",
             headers: {
               Authorization: `Bearer ${key}`,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: "openai/gpt-4o-mini-tts",
+              model: "gpt-4o-mini-tts",
               input: text.slice(0, 3500),
               voice: "alloy",
               instructions:

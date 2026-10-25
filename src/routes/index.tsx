@@ -30,8 +30,6 @@ import {
 import { describeNearby, getNearbyStory, type LandmarkStory } from "@/lib/landmark.functions";
 import { pauseAudio, resumeAudio, speak, unlockAudio } from "@/lib/speech";
 import { startRecording, transcribe, type Recorder } from "@/lib/transcribe";
-import { useWebMCP } from "use-webmcp-tool";
-import { runWebMCPTool } from "@/lib/webmcp-telemetry";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -355,27 +353,6 @@ function Index() {
     setMenuOpen(false);
     return "Map recentered on your location.";
   };
-
-  useWebMCP({
-    name: "read_current_story",
-    description: "Read the landmark story currently displayed on this map without changing audio or the guide.",
-    annotations: { readOnlyHint: true, untrustedContentHint: true },
-    execute: () => runWebMCPTool("read_current_story", () => story
-      ? `${story.name} — ${story.category}, ${story.area}. ${story.distanceHint}\n${story.story}`
-      : status === "thinking" ? "A landmark story is loading." : "No story is displayed."),
-  });
-  useWebMCP({
-    name: "read_guide_status",
-    description: "Read the current guide and audio status without requesting or exposing GPS coordinates.",
-    annotations: { readOnlyHint: true },
-    execute: () => runWebMCPTool("read_guide_status", () => `${label[status]}. Narration ${narration ? "on" : "off"}${paused ? ", paused" : ""}. Location ${coords ? "available" : "not available yet"}.`),
-  });
-  useWebMCP({
-    name: "recenter_map",
-    description: "Recenter the open map on the user's already available location without starting the guide.",
-    enabled: Boolean(coords),
-    execute: () => runWebMCPTool("recenter_map", recenterMap),
-  });
 
   return (
     <main className="relative h-dvh w-full overflow-hidden bg-background">
