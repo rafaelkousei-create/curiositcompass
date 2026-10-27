@@ -8,6 +8,7 @@ const Input = z.object({
   lng: z.number(),
   heard: z.array(z.string()).max(40).default([]),
   mode: z.enum(["driving", "walking"]).default("driving"),
+  language: z.enum(["en", "el"]).default("en"),
 });
 
 const StorySchema = {
@@ -79,9 +80,18 @@ const EMPTY_STORY: LandmarkStory = {
   url: "",
 };
 
-async function askForStory(instructions: string, input: string): Promise<LandmarkStory> {
+async function askForStory(
+  instructions: string,
+  input: string,
+  opts: { mode: string; language: string },
+): Promise<LandmarkStory> {
+  const tuned =
+    instructions.replace("70-130 words", opts.mode === "walking" ? "100-170 words" : "70-130 words") +
+    (opts.language === "el"
+      ? " Write headline, story, area, category and distanceHint in Greek. When you chose a place from the list, keep name exactly as in the list."
+      : " Write every text field in English.");
   const text = await generateStructuredText({
-    instructions,
+    instructions: tuned,
     input,
     schema: StorySchema as unknown as Record<string, unknown>,
     schemaName: "landmark_story",
@@ -123,7 +133,12 @@ function metresBetween(lat1: number, lng1: number, lat2: number, lng2: number) {
   return 2 * 6371000 * Math.asin(Math.sqrt(a));
 }
 
-async function wikipediaNearby(lat: number, lng: number, radius: number): Promise<Place[]> {
+async function wikipediaNearby(
+  lat: number,
+  lng: number,
+  radius: number,
+  lang: string,
+): Promise<Place[]> {
   const params = new URLSearchParams({
     action: "query",
     format: "json",
@@ -141,7 +156,7 @@ async function wikipediaNearby(lat: number, lng: number, radius: number): Promis
     exchars: "700",
   });
   try {
-    const response = await fetch(`https://en.wikipedia.org/w/api.php?${params.toString()}`, {
+    const response = await fetch(`https://${lang}.wikipedia.org/w/api.php?${params.toString()}`, {
       headers: { "User-Agent": "CuriosityCompass/1.0 (personal landmark guide app)" },
       signal: AbortSignal.timeout(6000),
     });
@@ -175,13 +190,20 @@ async function findCandidates(
   lng: number,
   heard: string[],
   limit = 8,
+  lang = "en",
 ): Promise<Place[]> {
   const told = heard.map((h) => h.toLowerCase());
   const fresh = (places: Place[]) =>
     places.filter((p) => !told.some((h) => h.includes(p.title.toLowerCase())));
 
-  let places = fresh(await wikipediaNearby(lat, lng, 1000));
-  if (places.length === 0) places = fresh(await wikipediaNearby(lat, lng, 5000));
+  // Search in the chosen language first, then in English.
+  const nearby = async (radius: number) => {
+    let found = fresh(await wikipediaNearby(lat, lng, radius, lang));
+    if (found.length === 0 && lang !== "en") found = fresh(await wikipediaNearby(lat, lng, radius, "en"));
+    return found;
+  };
+  let places = await nearby(1000);
+  if (places.length === 0) places = await nearby(5000);
   return places.slice(0, limit);
 }
 
@@ -211,7 +233,7 @@ export const getNearbyStory = createServerFn({ method: "POST" })
         ? "who is driving a car and cannot look at a screen."
         : "who is walking around on foot.";
 
-    const candidates = await findCandidates(data.lat, data.lng, data.heard);
+    const candidates = await findCandidates(data.lat, data.lng, data.heard, 8, data.language);
 
     if (candidates.length > 0) {
       // Grounded mode: the AI only tells the story of a real, nearby place.
@@ -241,7 +263,7 @@ export const getNearbyStory = createServerFn({ method: "POST" })
         ),
       ].join("\n");
 
-      const story = await askForStory(instructions, input);
+      const story = await askForStory(instructions, input, data);
       if (story.found && story.story) return withMedia(story, candidates);
     }
 
@@ -271,7 +293,7 @@ export const getNearbyStory = createServerFn({ method: "POST" })
       `Already told: ${data.heard.length ? data.heard.join("; ") : "(nothing yet)"}`,
     ].join("\n");
 
-    return askForStory(instructions, input);
+    return askForStory(instructions, input, data);
   });
 
 const DescribeInput = z.object({
@@ -279,13 +301,14 @@ const DescribeInput = z.object({
   lng: z.number(),
   description: z.string().min(2).max(400),
   mode: z.enum(["driving", "walking"]).default("driving"),
+  language: z.enum(["en", "el"]).default("en"),
 });
 
 export const describeNearby = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => DescribeInput.parse(input))
   .handler(async ({ data }): Promise<LandmarkStory> => {
     // Real places around the person, so the AI can match their words to something that exists.
-    const candidates = await findCandidates(data.lat, data.lng, [], 15);
+    const candidates = await findCandidates(data.lat, data.lng, [], 15, data.language);
 
     const instructions = [
       "You are a warm, knowledgeable local guide.",
@@ -321,5 +344,5 @@ export const describeNearby = createServerFn({ method: "POST" })
       ),
     ].join("\n");
 
-    return withMedia(await askForStory(instructions, input), candidates);
+    return withMedia(await askForStory(instructions, input, data), candidates);
   });

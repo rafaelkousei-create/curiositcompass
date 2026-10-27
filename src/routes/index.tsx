@@ -93,6 +93,45 @@ function Index() {
   useEffect(() => {
     setExpanded(false);
   }, [story]);
+  const [mode, setMode] = useState<"driving" | "walking">("driving");
+  const [language, setLanguage] = useState<"en" | "el">("en");
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  const modeRef = useRef<"driving" | "walking">("driving");
+  const languageRef = useRef<"en" | "el">("en");
+  useEffect(() => {
+    modeRef.current = mode;
+    languageRef.current = language;
+  }, [mode, language]);
+  // Remember settings and the places already heard between visits.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("compass-history");
+      if (saved) {
+        const items = JSON.parse(saved) as LandmarkStory[];
+        if (Array.isArray(items)) {
+          setHistory(items.slice(0, 30));
+          heardRef.current = items.map((item) => item.name).reverse();
+        }
+      }
+      const savedMode = localStorage.getItem("compass-mode");
+      if (savedMode === "walking" || savedMode === "driving") setMode(savedMode);
+      const savedLanguage = localStorage.getItem("compass-language");
+      if (savedLanguage === "el" || savedLanguage === "en") setLanguage(savedLanguage);
+    } catch {
+      /* storage unavailable */
+    }
+    setPrefsLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!prefsLoaded) return;
+    try {
+      localStorage.setItem("compass-history", JSON.stringify(history));
+      localStorage.setItem("compass-mode", mode);
+      localStorage.setItem("compass-language", language);
+    } catch {
+      /* storage unavailable */
+    }
+  }, [history, mode, language, prefsLoaded]);
   const recorderRef = useRef<Recorder | null>(null);
   const narrationRef = useRef(true);
 
@@ -143,7 +182,13 @@ function Index() {
       let delay = 30000;
       try {
         const result = await fetchStory({
-          data: { lat: point[0], lng: point[1], heard: heardRef.current },
+          data: {
+            lat: point[0],
+            lng: point[1],
+            heard: heardRef.current,
+            mode: modeRef.current,
+            language: languageRef.current,
+          },
         });
         if (run !== runIdRef.current) return;
         if (!runningRef.current && !force) return;
@@ -206,7 +251,13 @@ function Index() {
         const point = await currentPoint();
         setCoords(point);
         const result = await fetchDescribed({
-          data: { lat: point[0], lng: point[1], description: text },
+          data: {
+            lat: point[0],
+            lng: point[1],
+            description: text,
+            mode: modeRef.current,
+            language: languageRef.current,
+          },
         });
         if (!result.found || !result.story) {
           setError("I couldn't work out which place you mean — try adding a detail or two.");
@@ -299,7 +350,7 @@ function Index() {
         if (!runningRef.current) return;
         setStatus((prev) => (prev === "waiting" ? "listening" : prev));
         const last = lastPointRef.current;
-        if (!last || distance(last, point) > TRIGGER_METRES) void runStory(point);
+        if (!last || distance(last, point) > (modeRef.current === "walking" ? 120 : TRIGGER_METRES)) void runStory(point);
       },
       (err) => {
         setError(
@@ -424,6 +475,38 @@ function Index() {
                 </button>
               </div>
 
+              <div className="space-y-2">
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Mode</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["driving", "walking"] as const).map((value) => (
+                    <button
+                      key={value}
+                      onClick={() => setMode(value)}
+                      className={`flex min-h-11 items-center justify-center rounded-md border px-3 font-medium ${
+                        mode === value ? "border-primary bg-primary text-primary-foreground" : "border-border"
+                      }`}
+                    >
+                      {value === "driving" ? "Driving" : "Walking"}
+                    </button>
+                  ))}
+                </div>
+                <p className="pt-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Language
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["en", "el"] as const).map((value) => (
+                    <button
+                      key={value}
+                      onClick={() => setLanguage(value)}
+                      className={`flex min-h-11 items-center justify-center rounded-md border px-3 font-medium ${
+                        language === value ? "border-primary bg-primary text-primary-foreground" : "border-border"
+                      }`}
+                    >
+                      {value === "en" ? "English" : "Ελληνικά"}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="space-y-2">
                 <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Voice</p>
                 <button
