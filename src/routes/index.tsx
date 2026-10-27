@@ -442,6 +442,35 @@ function Index() {
   );
 
   const on = status !== "off";
+
+  // Keep the screen awake while the guide runs, so GPS and narration are not cut off.
+  useEffect(() => {
+    if (!on || !("wakeLock" in navigator)) return;
+    let lock: WakeLockSentinel | null = null;
+    let cancelled = false;
+    const acquire = async () => {
+      try {
+        const sentinel = await navigator.wakeLock.request("screen");
+        if (cancelled) {
+          void sentinel.release();
+          return;
+        }
+        lock = sentinel;
+      } catch {
+        /* not allowed right now */
+      }
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void acquire();
+    };
+    void acquire();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      void lock?.release().catch(() => undefined);
+    };
+  }, [on]);
   const label: Record<Status, string> = {
     off: "Guide is off",
     waiting: "Finding you…",
