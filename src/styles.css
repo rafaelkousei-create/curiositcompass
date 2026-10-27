@@ -277,3 +277,19 @@
   }
 }
 
+/* Pins for nearby places */
+.wayfarer-place-shell {
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 0;
+}
+.wayfarer-marker-place {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #f5b43a;
+  border: 2px solid #0f1424;
+  box-shadow: 0 0 0 3px rgba(245, 180, 58, 0.45);
+}

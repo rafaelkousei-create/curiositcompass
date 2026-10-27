@@ -29,7 +29,13 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { describeNearby, getNearbyStory, type LandmarkStory } from "@/lib/landmark.functions";
+import {
+  describeNearby,
+  getNearbyPlaces,
+  getNearbyStory,
+  type LandmarkStory,
+  type NearbyPlace,
+} from "@/lib/landmark.functions";
 import { pauseAudio, resumeAudio, speak, unlockAudio } from "@/lib/speech";
 import { startRecording, transcribe, type Recorder } from "@/lib/transcribe";
 
@@ -74,6 +80,7 @@ function distance(a: [number, number], b: [number, number]) {
 function Index() {
   const fetchStory = useServerFn(getNearbyStory);
   const fetchDescribed = useServerFn(describeNearby);
+  const fetchPlaces = useServerFn(getNearbyPlaces);
 
 
   const [status, setStatus] = useState<Status>("off");
@@ -132,6 +139,48 @@ function Index() {
       /* storage unavailable */
     }
   }, [history, mode, language, prefsLoaded]);
+  const [interests, setInterests] = useState<string[]>([]);
+  const [interestsLoaded, setInterestsLoaded] = useState(false);
+  const interestsRef = useRef<string[]>([]);
+  useEffect(() => {
+    interestsRef.current = interests;
+  }, [interests]);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("compass-interests");
+      if (saved) {
+        const list = JSON.parse(saved) as unknown;
+        if (Array.isArray(list)) {
+          setInterests(list.filter((item): item is string => typeof item === "string").slice(0, 8));
+        }
+      }
+    } catch {
+      /* storage unavailable */
+    }
+    setInterestsLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!interestsLoaded) return;
+    try {
+      localStorage.setItem("compass-interests", JSON.stringify(interests));
+    } catch {
+      /* storage unavailable */
+    }
+  }, [interests, interestsLoaded]);
+  // Real places around you, shown as pins on the map.
+  const [places, setPlaces] = useState<NearbyPlace[]>([]);
+  const placesPointRef = useRef<[number, number] | null>(null);
+  const placesLanguageRef = useRef("");
+  useEffect(() => {
+    if (!coords || !prefsLoaded) return;
+    const last = placesPointRef.current;
+    if (last && placesLanguageRef.current === language && distance(last, coords) < 400) return;
+    placesPointRef.current = coords;
+    placesLanguageRef.current = language;
+    fetchPlaces({ data: { lat: coords[0], lng: coords[1], language } })
+      .then(setPlaces)
+      .catch(() => undefined);
+  }, [coords, language, prefsLoaded, fetchPlaces]);
   const recorderRef = useRef<Recorder | null>(null);
   const narrationRef = useRef(true);
 
@@ -188,6 +237,7 @@ function Index() {
             heard: heardRef.current,
             mode: modeRef.current,
             language: languageRef.current,
+            interests: interestsRef.current,
           },
         });
         if (run !== runIdRef.current) return;
@@ -257,6 +307,7 @@ function Index() {
             description: text,
             mode: modeRef.current,
             language: languageRef.current,
+            interests: interestsRef.current,
           },
         });
         if (!result.found || !result.story) {
@@ -419,6 +470,11 @@ function Index() {
           current={coords ? { lat: coords[0], lng: coords[1] } : null}
           landmark={landmark}
           recenterKey={recenterKey}
+          places={places}
+          onPick={(title) => {
+            unlockAudio();
+            void runDescribed(`Tell me about ${title}`);
+          }}
         />
       </div>
 
@@ -505,6 +561,28 @@ function Index() {
                       {value === "en" ? "English" : "Ελληνικά"}
                     </button>
                   ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Interests</p>
+                <p className="text-xs text-muted-foreground">Pick what you enjoy. Leave empty for everything.</p>
+                <div className="flex flex-wrap gap-2">
+                  {["History", "Architecture", "Nature", "Myths and legends", "Art and culture", "Religion"].map((topic) => {
+                    const active = interests.includes(topic);
+                    return (
+                      <button
+                        key={topic}
+                        onClick={() =>
+                          setInterests((prev) => (active ? prev.filter((item) => item !== topic) : [...prev, topic]))
+                        }
+                        className={`rounded-full border px-3 py-1.5 text-sm ${
+                          active ? "border-primary bg-primary text-primary-foreground" : "border-border"
+                        }`}
+                      >
+                        {topic}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               <div className="space-y-2">

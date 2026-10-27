@@ -9,6 +9,7 @@ const Input = z.object({
   heard: z.array(z.string()).max(40).default([]),
   mode: z.enum(["driving", "walking"]).default("driving"),
   language: z.enum(["en", "el"]).default("en"),
+  interests: z.array(z.string().max(30)).max(8).default([]),
 });
 
 const StorySchema = {
@@ -83,13 +84,16 @@ const EMPTY_STORY: LandmarkStory = {
 async function askForStory(
   instructions: string,
   input: string,
-  opts: { mode: string; language: string },
+  opts: { mode: string; language: string; interests: string[] },
 ): Promise<LandmarkStory> {
   const tuned =
     instructions.replace("70-130 words", opts.mode === "walking" ? "100-170 words" : "70-130 words") +
     (opts.language === "el"
       ? " Write headline, story, area, category and distanceHint in Greek. When you chose a place from the list, keep name exactly as in the list."
-      : " Write every text field in English.");
+      : " Write every text field in English.") +
+    (opts.interests.length > 0
+      ? ` The listener is especially interested in: ${opts.interests.join(", ")}. When choosing a place, prefer ones related to these themes and highlight that angle.`
+      : "");
   const text = await generateStructuredText({
     instructions: tuned,
     input,
@@ -302,6 +306,7 @@ const DescribeInput = z.object({
   description: z.string().min(2).max(400),
   mode: z.enum(["driving", "walking"]).default("driving"),
   language: z.enum(["en", "el"]).default("en"),
+  interests: z.array(z.string().max(30)).max(8).default([]),
 });
 
 export const describeNearby = createServerFn({ method: "POST" })
@@ -345,4 +350,21 @@ export const describeNearby = createServerFn({ method: "POST" })
     ].join("\n");
 
     return withMedia(await askForStory(instructions, input, data), candidates);
+  });
+
+/* ---------- Places for the map pins ---------- */
+
+const PlacesInput = z.object({
+  lat: z.number(),
+  lng: z.number(),
+  language: z.enum(["en", "el"]).default("en"),
+});
+
+export type NearbyPlace = { title: string; lat: number; lng: number; distance: number };
+
+export const getNearbyPlaces = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => PlacesInput.parse(input))
+  .handler(async ({ data }): Promise<NearbyPlace[]> => {
+    const places = await findCandidates(data.lat, data.lng, [], 20, data.language);
+    return places.map(({ title, lat, lng, distance }) => ({ title, lat, lng, distance }));
   });

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { Map as LeafletMap, Marker } from "leaflet";
+import type { LayerGroup, Map as LeafletMap, Marker } from "leaflet";
 
 type Point = { lat: number; lng: number };
 
@@ -7,13 +7,18 @@ type Props = {
   current: Point | null;
   landmark: (Point & { name: string }) | null;
   recenterKey?: number;
+  places?: (Point & { title: string })[];
+  onPick?: (title: string) => void;
 };
 
-export function LandmarkMap({ current, landmark, recenterKey = 0 }: Props) {
+export function LandmarkMap({ current, landmark, recenterKey = 0, places = [], onPick }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const currentMarkerRef = useRef<Marker | null>(null);
   const landmarkMarkerRef = useRef<Marker | null>(null);
+  const placesLayerRef = useRef<LayerGroup | null>(null);
+  const onPickRef = useRef(onPick);
+  onPickRef.current = onPick;
 
   useEffect(() => {
     let disposed = false;
@@ -37,6 +42,7 @@ export function LandmarkMap({ current, landmark, recenterKey = 0 }: Props) {
       disposed = true;
       currentMarkerRef.current = null;
       landmarkMarkerRef.current = null;
+      placesLayerRef.current = null;
       mapRef.current?.remove();
       mapRef.current = null;
     };
@@ -109,6 +115,49 @@ export function LandmarkMap({ current, landmark, recenterKey = 0 }: Props) {
       active = false;
     };
   }, [current, landmark]);
+
+  // Pins for real places nearby. Tapping a pin offers to tell its story.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    let active = true;
+    void import("leaflet").then((L) => {
+      if (!active || !mapRef.current) return;
+      placesLayerRef.current?.remove();
+      const layer = L.layerGroup();
+      for (const place of places) {
+        const icon = L.divIcon({
+          className: "wayfarer-place-shell",
+          html: '<span class="wayfarer-marker-place"></span>',
+          iconSize: [32, 32],
+          iconAnchor: [16, 16],
+        });
+        const marker = L.marker([place.lat, place.lng], { icon });
+        const box = document.createElement("div");
+        const title = document.createElement("strong");
+        title.textContent = place.title;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "Tell me about this";
+        button.style.cssText =
+          "display:block;margin-top:8px;padding:6px 12px;border-radius:9999px;background:#f5b43a;color:#0f1424;font-weight:600;border:0;cursor:pointer";
+        button.onclick = () => {
+          marker.closePopup();
+          onPickRef.current?.(place.title);
+        };
+        box.append(title, button);
+        marker.bindPopup(box);
+        layer.addLayer(marker);
+      }
+      layer.addTo(mapRef.current);
+      placesLayerRef.current = layer;
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [places]);
 
   useEffect(() => {
     if (!recenterKey) return;
