@@ -47,6 +47,8 @@ export type LandmarkStory = {
   distanceHint: string;
   lat: number;
   lng: number;
+  image: string;
+  url: string;
 };
 
 const StoryParser = z.object({
@@ -59,6 +61,8 @@ const StoryParser = z.object({
   distanceHint: z.string(),
   lat: z.number().default(0),
   lng: z.number().default(0),
+  image: z.string().default(""),
+  url: z.string().default(""),
 });
 
 const EMPTY_STORY: LandmarkStory = {
@@ -71,6 +75,8 @@ const EMPTY_STORY: LandmarkStory = {
   distanceHint: "",
   lat: 0,
   lng: 0,
+  image: "",
+  url: "",
 };
 
 async function askForStory(instructions: string, input: string): Promise<LandmarkStory> {
@@ -95,12 +101,16 @@ type Place = {
   lng: number;
   distance: number; // metres
   notes: string;
+  image: string;
+  url: string;
 };
 
 type WikiPage = {
   title: string;
   extract?: string;
   coordinates?: { lat: number; lon: number }[];
+  thumbnail?: { source: string };
+  fullurl?: string;
 };
 
 function metresBetween(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -121,7 +131,10 @@ async function wikipediaNearby(lat: number, lng: number, radius: number): Promis
     ggscoord: `${lat}|${lng}`,
     ggsradius: String(radius),
     ggslimit: "20",
-    prop: "extracts|coordinates",
+    prop: "extracts|coordinates|pageimages|info",
+    piprop: "thumbnail",
+    pithumbsize: "640",
+    inprop: "url",
     exintro: "1",
     explaintext: "1",
     exlimit: "max",
@@ -145,6 +158,8 @@ async function wikipediaNearby(lat: number, lng: number, radius: number): Promis
         lng: point.lon,
         distance: Math.round(metresBetween(lat, lng, point.lat, point.lon)),
         notes: page.extract.replace(/\s+/g, " ").trim(),
+        image: page.thumbnail?.source ?? "",
+        url: page.fullurl ?? "",
       });
     }
     return places.sort((a, b) => a.distance - b.distance);
@@ -168,6 +183,22 @@ async function findCandidates(
   let places = fresh(await wikipediaNearby(lat, lng, 1000));
   if (places.length === 0) places = fresh(await wikipediaNearby(lat, lng, 5000));
   return places.slice(0, limit);
+}
+
+/** Adds the photo and Wikipedia link of the place the AI chose, matched by name or position. */
+function withMedia(story: LandmarkStory, places: Place[]): LandmarkStory {
+  if (!story.found) return story;
+  const name = story.name.trim().toLowerCase();
+  let match = places.find((p) => p.title.toLowerCase() === name);
+  if (!match && name) {
+    match = places.find(
+      (p) => p.title.toLowerCase().includes(name) || name.includes(p.title.toLowerCase()),
+    );
+  }
+  if (!match && (story.lat !== 0 || story.lng !== 0)) {
+    match = places.find((p) => metresBetween(story.lat, story.lng, p.lat, p.lng) < 60);
+  }
+  return match ? { ...story, image: match.image, url: match.url } : story;
 }
 
 /* ---------- Server functions ---------- */
@@ -211,7 +242,7 @@ export const getNearbyStory = createServerFn({ method: "POST" })
       ].join("\n");
 
       const story = await askForStory(instructions, input);
-      if (story.found && story.story) return story;
+      if (story.found && story.story) return withMedia(story, candidates);
     }
 
     // Fallback: no Wikipedia places found, so rely on the AI's own knowledge, with a wider reach.
@@ -290,5 +321,5 @@ export const describeNearby = createServerFn({ method: "POST" })
       ),
     ].join("\n");
 
-    return askForStory(instructions, input);
+    return withMedia(await askForStory(instructions, input), candidates);
   });

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Compass,
   Crosshair,
+  ExternalLink,
   History,
   Info,
   Loader2,
@@ -88,6 +89,10 @@ function Index() {
   const [narration, setNarration] = useState(true);
   const [paused, setPaused] = useState(false);
   const [recenterKey, setRecenterKey] = useState(0);
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    setExpanded(false);
+  }, [story]);
   const recorderRef = useRef<Recorder | null>(null);
   const narrationRef = useRef(true);
 
@@ -507,14 +512,43 @@ function Index() {
         {story ? (
           <div className="mb-4 grid grid-cols-[minmax(0,1fr)_auto] gap-4 border-b border-border pb-4">
             <div className="min-w-0">
+              {story.image ? (
+                <img
+                  src={story.image}
+                  alt={story.name}
+                  loading="lazy"
+                  className="mb-3 h-32 w-full rounded-xl object-cover sm:h-44"
+                />
+              ) : null}
               <p className="truncate text-xs font-medium tracking-wide text-muted-foreground uppercase">
                 {story.category} · {story.area}
               </p>
               <h2 className="mt-1 truncate text-xl font-semibold sm:text-2xl">{story.name}</h2>
               <p className="mt-1 text-sm font-medium text-primary">{story.distanceHint}</p>
-              <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted-foreground sm:line-clamp-3">
+              <p
+                className={`mt-2 text-sm leading-relaxed text-muted-foreground ${expanded ? "" : "line-clamp-3"}`}
+              >
                 {story.story}
               </p>
+              <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
+                <button
+                  type="button"
+                  onClick={() => setExpanded((value) => !value)}
+                  className="font-medium text-primary"
+                >
+                  {expanded ? "Show less" : "Read full story"}
+                </button>
+                {story.url ? (
+                  <a
+                    href={story.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-muted-foreground underline"
+                  >
+                    Wikipedia <ExternalLink className="size-3.5" />
+                  </a>
+                ) : null}
+              </div>
             </div>
             <button
               onClick={() => {
