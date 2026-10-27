@@ -155,14 +155,19 @@ async function wikipediaNearby(lat: number, lng: number, radius: number): Promis
 }
 
 /** Nearby places that have not been told yet; widens the search if the first is empty. */
-async function findCandidates(lat: number, lng: number, heard: string[]): Promise<Place[]> {
+async function findCandidates(
+  lat: number,
+  lng: number,
+  heard: string[],
+  limit = 8,
+): Promise<Place[]> {
   const told = heard.map((h) => h.toLowerCase());
   const fresh = (places: Place[]) =>
     places.filter((p) => !told.some((h) => h.includes(p.title.toLowerCase())));
 
   let places = fresh(await wikipediaNearby(lat, lng, 1000));
   if (places.length === 0) places = fresh(await wikipediaNearby(lat, lng, 5000));
-  return places.slice(0, 8);
+  return places.slice(0, limit);
 }
 
 /* ---------- Server functions ---------- */
@@ -248,27 +253,41 @@ const DescribeInput = z.object({
 export const describeNearby = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => DescribeInput.parse(input))
   .handler(async ({ data }): Promise<LandmarkStory> => {
+    // Real places around the person, so the AI can match their words to something that exists.
+    const candidates = await findCandidates(data.lat, data.lng, [], 15);
+
     const instructions = [
       "You are a warm, knowledgeable local guide.",
       data.mode === "driving"
         ? "The person is in a car and cannot look at a screen."
         : "The person is on foot.",
-      "They describe something they can see near their GPS position. Work out which REAL place they",
-      "most likely mean - prefer visible landmarks, buildings, monuments, bridges, churches, squares,",
-      "statues, hills or streets close to those coordinates. Only name something you actually know",
-      "exists there. If you cannot confidently match their description, set found to false and leave",
+      "They ask about something near their position. It may be a description of what they can see,",
+      "the name of a place, or a question.",
+      "You are given REAL places near them, with notes from Wikipedia and distances in metres.",
+      "First try to match what they said to one of those places and choose the best match.",
+      "If they name or clearly mean a specific well-known place that is not in the list, you may",
+      "answer from your own reliable knowledge.",
+      "If they ask for a specific fact, include the answer in the story.",
+      "If you cannot match their words with reasonable confidence, set found to false and leave",
       "the other text fields as empty strings.",
-      "story: 70-130 words of spoken narration - vivid, factual, specific dates and names, no",
-      "greetings, no mention of coordinates or GPS, ready to be read aloud.",
-      "headline: max 8 words. area: the neighbourhood, town or city. category: e.g. 'Historic church'.",
-      "distanceHint: a short spoken cue like 'just on your right' or 'about 200 metres ahead'.",
-      "lat/lng: the real decimal coordinates of the place itself (use 0 and 0 only when found is false).",
+      "story: 70-130 words of spoken narration - vivid and factual, never invent dates, names or",
+      "numbers, no greetings, no mention of coordinates or GPS, ready to be read aloud.",
+      "name: the place name. headline: max 8 words. area: the neighbourhood, town or city.",
+      "category: e.g. Historic church.",
+      "distanceHint: a short spoken cue like about 300 metres from you.",
+      "lat/lng: the coordinates of the place (copy them from the list when you chose from it).",
     ].join(" ");
 
     const input = [
-      `Latitude: ${data.lat}`,
-      `Longitude: ${data.lng}`,
+      `Listener position: ${data.lat}, ${data.lng}`,
       `They said: ${data.description}`,
+      candidates.length > 0
+        ? "Real places nearby:"
+        : "No nearby places were found in the database.",
+      ...candidates.map(
+        (p, i) =>
+          `${i + 1}. ${p.title} | ${p.distance} metres away | lat ${p.lat}, lng ${p.lng} | notes: ${p.notes}`,
+      ),
     ].join("\n");
 
     return askForStory(instructions, input);

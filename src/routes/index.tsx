@@ -11,6 +11,7 @@ import {
   Menu,
   Mic,
   Radio,
+  Send,
   SkipForward,
   Square,
   Trash2,
@@ -599,9 +600,31 @@ function Index() {
             </>
           )}
         </button>
-        {ask && !recording ? (
-          <p className="mt-2 truncate text-center text-xs text-muted-foreground">“{ask}”</p>
-        ) : null}
+        <form
+          className="mt-2 flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            unlockAudio();
+            void runDescribed(ask);
+          }}
+        >
+          <input
+            value={ask}
+            onChange={(event) => setAsk(event.target.value)}
+            placeholder="Or type: what is that tall building?"
+            maxLength={400}
+            disabled={asking || recording}
+            className="h-11 min-w-0 flex-1 rounded-full border border-border bg-background px-4 text-sm disabled:opacity-60"
+          />
+          <button
+            type="submit"
+            aria-label="Ask"
+            disabled={asking || recording || ask.trim().length < 2}
+            className="grid size-11 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
+          >
+            <Send className="size-4" />
+          </button>
+        </form>
 
         {error ? <p className="mt-3 text-center text-sm text-destructive">{error}</p> : null}
 

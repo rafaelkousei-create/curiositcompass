@@ -92,7 +92,20 @@ export async function transcribe(blob: Blob): Promise<string> {
   const res = await fetch("/api/transcribe", { method: "POST", body: form });
   if (!res.ok || !res.body) {
     const detail = await res.text().catch(() => "");
-    throw new Error(detail || `Couldn't understand that (${res.status})`);
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("The voice service rejected the key. Check OPENAI_API_KEY.");
+    }
+    if (res.status === 429) {
+      throw new Error("The voice service is busy or out of credit. Try again shortly.");
+    }
+    if (detail && !detail.trim().startsWith("{")) throw new Error(detail);
+    throw new Error(`Could not turn your voice into text (error ${res.status}).`);
+  }
+
+  // Some responses come back as plain JSON instead of a stream.
+  if ((res.headers.get("content-type") ?? "").includes("application/json")) {
+    const json = (await res.json().catch(() => ({}))) as { text?: string };
+    return (json.text ?? "").trim();
   }
 
   const reader = (
