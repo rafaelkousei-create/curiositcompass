@@ -467,6 +467,12 @@ function Index() {
     }
   };
 
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => setError(null), 8000);
+    return () => clearTimeout(timer);
+  }, [error]);
+
   const on = status !== "off";
 
   // Keep the screen awake while the guide runs, so GPS and narration are not cut off.
@@ -731,35 +737,57 @@ function Index() {
         </Sheet>
       </header>
 
-      <section className="surface absolute inset-x-0 bottom-0 z-500 mx-auto flex max-h-[52dvh] w-full max-w-4xl flex-col overflow-y-auto rounded-t-2xl border-x-0 border-b-0 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:bottom-5 sm:max-h-[46dvh] sm:w-[calc(100%-2.5rem)] sm:rounded-lg sm:border sm:p-5">
-        <div className="mx-auto mb-3 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/40 sm:hidden" />
+      <section className="surface absolute inset-x-0 bottom-0 z-500 mx-auto flex max-h-[62dvh] w-full max-w-4xl flex-col rounded-t-2xl border-x-0 border-b-0 sm:bottom-5 sm:max-h-[56dvh] sm:w-[calc(100%-2.5rem)] sm:rounded-lg sm:border">
+        <div className="mx-auto mt-2 mb-1 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/40 sm:hidden" />
 
-        {story ? (
-          <div className="mb-4 grid grid-cols-[minmax(0,1fr)_auto] gap-4 border-b border-border pb-4">
-            <div className="min-w-0">
-              {story.image ? (
-                <img
-                  src={story.image}
-                  alt={story.name}
-                  loading="lazy"
-                  className="mb-3 h-32 w-full rounded-xl object-cover sm:h-44"
-                />
-              ) : null}
-              <p className="truncate text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                {story.category} · {story.area}
-              </p>
-              <h2 className="mt-1 truncate text-xl font-semibold sm:text-2xl">{story.name}</h2>
-              <p className="mt-1 text-sm font-medium text-primary">{story.distanceHint}</p>
+        {/* Scrolling area: the story, nearby places and history. */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 sm:px-5">
+          {story ? (
+            <div className="pb-3">
+              <div className="flex gap-3">
+                {story.image ? (
+                  <img
+                    src={story.image}
+                    alt={story.name}
+                    loading="lazy"
+                    className="size-16 shrink-0 rounded-xl object-cover"
+                  />
+                ) : null}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    {story.category} · {story.area}
+                  </p>
+                  <h2 className="mt-0.5 line-clamp-2 text-lg leading-snug font-semibold">{story.name}</h2>
+                  <p className="mt-0.5 text-sm font-medium text-primary">{story.distanceHint}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    if (status === "speaking") {
+                      if (paused) resumeAudio();
+                      else pauseAudio();
+                      setPaused(!paused);
+                    } else {
+                      unlockAudio();
+                      replay(story);
+                    }
+                  }}
+                  aria-label={status === "speaking" ? (paused ? "Continue story" : "Pause story") : "Play story again"}
+                  title={status === "speaking" ? (paused ? "Continue story" : "Pause story") : "Play story again"}
+                  className="grid size-11 shrink-0 place-items-center rounded-full border border-border bg-secondary text-foreground"
+                >
+                  {status === "speaking" && !paused ? <VolumeX className="size-5" /> : <Volume2 className="size-5" />}
+                </button>
+              </div>
               <p
-                className={`mt-2 text-sm leading-relaxed text-muted-foreground ${expanded ? "" : "line-clamp-3"}`}
+                className={`mt-3 text-base leading-relaxed text-foreground/90 ${expanded ? "" : "line-clamp-3"}`}
               >
                 {story.story}
               </p>
-              <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
+              <div className="mt-1 flex flex-wrap items-center gap-x-5 text-sm">
                 <button
                   type="button"
                   onClick={() => setExpanded((value) => !value)}
-                  className="font-medium text-primary"
+                  className="min-h-11 font-medium text-primary"
                 >
                   {expanded ? "Show less" : "Read full story"}
                 </button>
@@ -768,165 +796,144 @@ function Index() {
                     href={story.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-muted-foreground underline"
+                    className="inline-flex min-h-11 items-center gap-1 text-muted-foreground underline"
                   >
                     Wikipedia <ExternalLink className="size-3.5" />
                   </a>
                 ) : null}
               </div>
             </div>
+          ) : (
+            <div className="pb-3">
+              <p className="font-display text-lg font-semibold">Every place has a story.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Start the guide, or ask about a place below.
+              </p>
+            </div>
+          )}
+
+          {places.length > 0 ? (
+            <details className="border-t border-border py-1">
+              <summary className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-medium">
+                <MapPin className="size-4 text-primary" /> Nearby · {places.length}
+              </summary>
+              <ul className="space-y-1 pb-2">
+                {places.slice(0, 12).map((place) => (
+                  <li key={`${place.title}-${place.lat}`}>
+                    <button
+                      onClick={() => {
+                        unlockAudio();
+                        void runDescribed(`Tell me about ${place.title}`);
+                      }}
+                      disabled={asking}
+                      className="flex min-h-11 w-full items-center justify-between gap-3 rounded-md px-2 text-left text-sm hover:bg-secondary disabled:opacity-50"
+                    >
+                      <span className="min-w-0 truncate font-medium">{place.title}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{formatDistance(place.distance)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+
+          {history.length > 1 ? (
+            <details className="border-t border-border py-1">
+              <summary className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-medium">
+                <History className="size-4 text-primary" /> Along the way · {history.length - 1}
+              </summary>
+              <ul className="space-y-2 pb-2">
+                {history.slice(1).map((item, index) => (
+                  <li key={`${item.name}-${index}`} className="text-sm">
+                    <span className="font-medium">{item.name}</span>
+                    <span className="text-muted-foreground"> · {item.headline}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </div>
+
+        {/* Fixed controls: always in the same place, whatever the story shows. */}
+        <div className="shrink-0 border-t border-border px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-5">
+          {error ? (
+            <p role="alert" className="mb-2 rounded-lg bg-destructive/15 px-3 py-2 text-center text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={on ? stop : start}
+              aria-label={on ? "Stop guide" : "Start guide"}
+              className={`relative flex h-14 flex-1 items-center justify-center gap-2.5 rounded-full px-5 text-base font-semibold shadow-lg transition-transform active:scale-95 ${
+                on ? "border border-border bg-secondary text-foreground" : "bg-primary text-primary-foreground"
+              }`}
+            >
+              {on ? <span className="pulse-ring absolute inset-0 rounded-full border-2 border-primary" /> : null}
+              {status === "thinking" ? (
+                <Loader2 className="size-5 animate-spin" />
+              ) : status === "speaking" ? (
+                <Volume2 className="size-5" />
+              ) : (
+                <Radio className="size-5" />
+              )}
+              {on ? "Stop guide" : "Start guide"}
+            </button>
             <button
               onClick={() => {
-                if (status === "speaking") {
-                  if (paused) resumeAudio();
-                  else pauseAudio();
-                  setPaused(!paused);
-                } else {
-                  unlockAudio();
-                  replay(story);
-                }
+                unlockAudio();
+                if (coords) void runStory(coords, true);
               }}
-              aria-label={status === "speaking" ? (paused ? "Continue story" : "Pause story") : "Play story again"}
-              title={status === "speaking" ? (paused ? "Continue story" : "Pause story") : "Play story again"}
-              className="grid size-11 shrink-0 place-items-center rounded-full border border-border bg-secondary text-foreground"
+              disabled={!coords}
+              aria-label="Skip to the next place"
+              title="Next place"
+              className="flex h-14 shrink-0 items-center justify-center gap-2 rounded-full border border-border px-5 text-base font-medium disabled:opacity-40"
             >
-              {status === "speaking" && !paused ? <VolumeX className="size-5" /> : <Volume2 className="size-5" />}
+              <SkipForward className="size-5" /> Next
             </button>
           </div>
-        ) : (
-          <div className="mb-4 border-b border-border pb-4">
-            <p className="font-display text-lg font-semibold">Every place has a story.</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Start the guide or describe something you can see.
-            </p>
-          </div>
-        )}
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={on ? stop : start}
-            aria-label={on ? "Stop guide" : "Start guide"}
-            className={`relative flex h-14 flex-1 items-center justify-center gap-2.5 rounded-full px-5 text-base font-semibold shadow-lg transition-transform active:scale-95 ${
-              on ? "border border-border bg-secondary text-foreground" : "bg-primary text-primary-foreground"
-            }`}
-          >
-            {on ? <span className="pulse-ring absolute inset-0 rounded-full border-2 border-primary" /> : null}
-            {status === "thinking" ? (
-              <Loader2 className="size-5 animate-spin" />
-            ) : status === "speaking" ? (
-              <Volume2 className="size-5" />
-            ) : (
-              <Radio className="size-5" />
-            )}
-            {on ? "Stop guide" : "Start guide"}
-          </button>
-
-          <button
-            onClick={() => {
+          <form
+            className="mt-2.5 flex items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
               unlockAudio();
-              if (coords) void runStory(coords, true);
+              void runDescribed(ask);
             }}
-            disabled={!coords}
-            aria-label="Skip to the next place"
-            title="Next place"
-            className="flex h-14 shrink-0 items-center justify-center gap-2 rounded-full border border-border px-4 text-sm font-medium disabled:opacity-40"
           >
-            <SkipForward className="size-5" /> Next
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                unlockAudio();
+                void toggleRecording();
+              }}
+              disabled={asking}
+              aria-label={recording ? "Stop recording and ask" : "Ask by voice"}
+              className={`grid size-12 shrink-0 place-items-center rounded-full border disabled:opacity-60 ${
+                recording ? "border-destructive bg-destructive text-destructive-foreground" : "border-border"
+              }`}
+            >
+              {recording ? <Square className="size-5" /> : <Mic className="size-5 text-primary" />}
+            </button>
+            <input
+              value={ask}
+              onChange={(event) => setAsk(event.target.value)}
+              placeholder={recording ? "Listening… tap the red button to finish" : "Ask about a place…"}
+              maxLength={400}
+              disabled={asking || recording}
+              className="h-12 min-w-0 flex-1 rounded-full border border-border bg-background px-4 text-base disabled:opacity-60"
+            />
+            <button
+              type="submit"
+              aria-label="Ask"
+              disabled={asking || recording || ask.trim().length < 2}
+              className="grid size-12 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
+            >
+              {asking ? <Loader2 className="size-5 animate-spin" /> : <Send className="size-5" />}
+            </button>
+          </form>
         </div>
-        <button
-          onClick={() => {
-            unlockAudio();
-            void toggleRecording();
-          }}
-          disabled={asking}
-          aria-label={recording ? "Stop recording and ask" : "Ask about a place by voice"}
-          className={`mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-full border px-3 text-sm font-medium disabled:opacity-60 ${
-            recording ? "border-destructive bg-destructive text-destructive-foreground" : "border-border"
-          }`}
-        >
-          {asking ? (
-            <>
-              <Loader2 className="size-4 animate-spin text-primary" /> Looking it up…
-            </>
-          ) : recording ? (
-            <>
-              <Square className="size-4" /> Listening… tap to ask
-            </>
-          ) : (
-            <>
-              <Mic className="size-4 text-primary" /> Ask about a place
-            </>
-          )}
-        </button>
-        <form
-          className="mt-2 flex gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            unlockAudio();
-            void runDescribed(ask);
-          }}
-        >
-          <input
-            value={ask}
-            onChange={(event) => setAsk(event.target.value)}
-            placeholder="Or type: what is that tall building?"
-            maxLength={400}
-            disabled={asking || recording}
-            className="h-11 min-w-0 flex-1 rounded-full border border-border bg-background px-4 text-sm disabled:opacity-60"
-          />
-          <button
-            type="submit"
-            aria-label="Ask"
-            disabled={asking || recording || ask.trim().length < 2}
-            className="grid size-11 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
-          >
-            <Send className="size-4" />
-          </button>
-        </form>
-
-        {error ? <p className="mt-3 text-center text-sm text-destructive">{error}</p> : null}
-
-        {places.length > 0 ? (
-          <details className="mt-3 border-t border-border pt-3">
-            <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-              <MapPin className="size-4 text-primary" /> Nearby · {places.length}
-            </summary>
-            <ul className="mt-3 space-y-1">
-              {places.slice(0, 12).map((place) => (
-                <li key={`${place.title}-${place.lat}`}>
-                  <button
-                    onClick={() => {
-                      unlockAudio();
-                      void runDescribed(`Tell me about ${place.title}`);
-                    }}
-                    disabled={asking}
-                    className="flex min-h-11 w-full items-center justify-between gap-3 rounded-md px-2 text-left text-sm hover:bg-secondary disabled:opacity-50"
-                  >
-                    <span className="min-w-0 truncate font-medium">{place.title}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">{formatDistance(place.distance)}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </details>
-        ) : null}
-
-        {history.length > 1 ? (
-          <details className="mt-3 border-t border-border pt-3">
-            <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-              <History className="size-4 text-primary" /> Along the way · {history.length - 1}
-            </summary>
-            <ul className="mt-3 space-y-2">
-              {history.slice(1).map((item, index) => (
-                <li key={`${item.name}-${index}`} className="text-sm">
-                  <span className="font-medium">{item.name}</span>
-                  <span className="text-muted-foreground"> · {item.headline}</span>
-                </li>
-              ))}
-            </ul>
-          </details>
-        ) : null}
       </section>
 
       {welcome ? (
