@@ -1,6 +1,6 @@
 {
-  "name": "Wayfarer - landmark stories as you travel",
-  "short_name": "Wayfarer",
+  "name": "Curiosity Compass - landmark stories as you travel",
+  "short_name": "Compass",
   "description": "A hands-free audio guide that tells the story of the places around you.",
   "start_url": "/",
   "scope": "/",
