@@ -227,6 +227,58 @@ function withMedia(story: LandmarkStory, places: Place[]): LandmarkStory {
   return match ? { ...story, image: match.image, url: match.url } : story;
 }
 
+/** Everything on the map nearby (airfields, viewpoints, ruins, lakes, factories...) from OpenStreetMap. */
+async function osmNearby(lat: number, lng: number): Promise<Place[]> {
+  const query = `[out:json][timeout:8];(
+    nwr(around:3000,${lat},${lng})[aeroway~"^(aerodrome|heliport|airstrip)$"];
+    nwr(around:1500,${lat},${lng})[name][~"^(tourism|historic|aeroway|natural|man_made|leisure|waterway|military|power|railway|bridge)$"~"."];
+  );out center 80;`;
+  try {
+    const response = await fetch("https://overpass-api.de/api/interpreter", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "CuriosityCompass/1.0 (personal landmark guide app)",
+      },
+      body: `data=${encodeURIComponent(query)}`,
+      signal: AbortSignal.timeout(7000),
+    });
+    if (!response.ok) return [];
+    const data = (await response.json()) as {
+      elements?: {
+        lat?: number;
+        lon?: number;
+        center?: { lat: number; lon: number };
+        tags?: Record<string, string>;
+      }[];
+    };
+    const kinds = ["aeroway", "tourism", "historic", "natural", "man_made", "leisure", "waterway", "military", "power", "railway", "bridge"];
+    const places: Place[] = [];
+    for (const element of data.elements ?? []) {
+      const tags = element.tags ?? {};
+      const pLat = element.lat ?? element.center?.lat;
+      const pLng = element.lon ?? element.center?.lon;
+      if (pLat === undefined || pLng === undefined) continue;
+      const kind = kinds.find((k) => tags[k]);
+      if (!kind) continue;
+      const title = tags.name || tags["name:en"] || `Unnamed ${tags[kind].replace(/_/g, " ")}`;
+      places.push({
+        title,
+        lat: pLat,
+        lng: pLng,
+        distance: Math.round(metresBetween(lat, lng, pLat, pLng)),
+        notes: `Map data: ${kind} = ${tags[kind]}${tags.operator ? `, operator ${tags.operator}` : ""}${tags.description ? `, ${tags.description}` : ""}`,
+        image: "",
+        url: "",
+      });
+    }
+    return places.sort((a, b) => a.distance - b.distance).slice(0, 30);
+  } catch (error) {
+    console.error("Map lookup failed:", error);
+    return [];
+  }
+}
+
 /* ---------- Server functions ---------- */
 
 export const getNearbyStory = createServerFn({ method: "POST" })
@@ -312,44 +364,58 @@ const DescribeInput = z.object({
 export const describeNearby = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => DescribeInput.parse(input))
   .handler(async ({ data }): Promise<LandmarkStory> => {
-    // Real places around the person, so the AI can match their words to something that exists.
-    const candidates = await findCandidates(data.lat, data.lng, [], 15, data.language);
+    // Everything around the person: Wikipedia articles plus anything on the map.
+    const [wiki, wikiEn, osm] = await Promise.all([
+      wikipediaNearby(data.lat, data.lng, 3000, data.language),
+      data.language !== "en" ? wikipediaNearby(data.lat, data.lng, 3000, "en") : Promise.resolve([]),
+      osmNearby(data.lat, data.lng),
+    ]);
+    const seen = new Set<string>();
+    const candidates: Place[] = [];
+    for (const place of [...wiki, ...wikiEn, ...osm].sort((a, b) => a.distance - b.distance)) {
+      const key = place.title.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      candidates.push(place);
+    }
+    const list = candidates.slice(0, 40);
 
     const instructions = [
-      "You are a warm, knowledgeable local guide.",
-      data.mode === "driving"
-        ? "The person is in a car and cannot look at a screen."
-        : "The person is on foot.",
-      "They ask about something near their position. It may be a description of what they can see,",
-      "the name of a place, or a question.",
-      "You are given REAL places near them, with notes from Wikipedia and distances in metres.",
-      "First try to match what they said to one of those places and choose the best match.",
-      "If they name or clearly mean a specific well-known place that is not in the list, you may",
-      "answer from your own reliable knowledge.",
-      "If they ask for a specific fact, include the answer in the story.",
-      "If you cannot match their words with reasonable confidence, set found to false and leave",
-      "the other text fields as empty strings.",
-      "story: 70-130 words of spoken narration - vivid and factual, never invent dates, names or",
+      "You are a warm, knowledgeable local guide who can talk about ANYTHING near the listener,",
+      "not only famous landmarks: a small airfield, a bridge, a factory, a farm, a lake, a statue,",
+      "an odd building, a view, a type of tree or rock - whatever they ask about.",
+      data.mode === "driving" ? "The person is in a car and cannot look at a screen." : "The person is on foot.",
+      "They describe something they see or ask a question. You are given places near them (Wikipedia",
+      "articles and map data) with distances in metres. Their words may include directions like",
+      "left or right; you do not know which way they face, so ignore directions.",
+      "1) If one of the listed places fits what they said, choose it and tell its story using the notes.",
+      "2) If nothing listed fits, answer from your own reliable knowledge about that kind of thing",
+      "(for example what a small airfield or a wind farm is, how it works, why it is there, what is",
+      "interesting about it). Say honestly that you cannot be sure which exact one it is, for example:",
+      "It is probably a small airfield, and places like this usually...",
+      "3) If they ask a question, answer it directly first.",
+      "Always give a helpful, interesting answer. Set found to false ONLY if the request is",
+      "meaningless or you truly cannot say anything useful; then leave the other text fields empty.",
+      "story: 70-140 words of spoken narration, vivid and factual, never invent dates, names or",
       "numbers, no greetings, no mention of coordinates or GPS, ready to be read aloud.",
-      "name: the place name. headline: max 8 words. area: the neighbourhood, town or city.",
-      "category: e.g. Historic church.",
-      "distanceHint: a short spoken cue like about 300 metres from you.",
-      "lat/lng: the coordinates of the place (copy them from the list when you chose from it).",
+      "name: the place or topic name (a short title is fine). headline: max 8 words.",
+      "area: the neighbourhood, town or city. category: e.g. Small airfield.",
+      "distanceHint: a short spoken cue like about 300 metres from you, or nearby.",
+      "lat/lng: the coordinates of the place (copy them from the list when you chose from it;",
+      "otherwise use 0 and 0).",
     ].join(" ");
 
     const input = [
       `Listener position: ${data.lat}, ${data.lng}`,
       `They said: ${data.description}`,
-      candidates.length > 0
-        ? "Real places nearby:"
-        : "No nearby places were found in the database.",
-      ...candidates.map(
+      list.length > 0 ? "Places nearby:" : "No nearby places were found in the databases.",
+      ...list.map(
         (p, i) =>
           `${i + 1}. ${p.title} | ${p.distance} metres away | lat ${p.lat}, lng ${p.lng} | notes: ${p.notes}`,
       ),
     ].join("\n");
 
-    return withMedia(await askForStory(instructions, input, data), candidates);
+    return withMedia(await askForStory(instructions, input, { ...data, interests: [] }), list);
   });
 
 /* ---------- Places for the map pins ---------- */

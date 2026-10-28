@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   Compass,
   Crosshair,
@@ -320,7 +320,7 @@ function Index() {
           },
         });
         if (!result.found || !result.story) {
-          setError("I couldn't work out which place you mean — try adding a detail or two.");
+          setError("I couldn't find anything useful about that — try saying it a different way.");
           return;
         }
         heardRef.current = [...heardRef.current, result.name].slice(-40);
@@ -473,6 +473,40 @@ function Index() {
     return () => clearTimeout(timer);
   }, [error]);
 
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const dockRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ y: number; h: number; moved: boolean } | null>(null);
+  const [sheetH, setSheetH] = useState<number | null>(null);
+  const [panelH, setPanelH] = useState(300);
+
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setPanelH(el.offsetHeight));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const startDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = { y: event.clientY, h: scrollRef.current?.offsetHeight ?? 0, moved: false };
+  };
+  const moveDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const delta = drag.y - event.clientY;
+    if (Math.abs(delta) > 6) drag.moved = true;
+    if (!drag.moved) return;
+    const limit = Math.max(120, window.innerHeight * 0.72 - (dockRef.current?.offsetHeight ?? 150) - 28);
+    setSheetH(Math.round(Math.min(limit, Math.max(0, drag.h + delta))));
+  };
+  const endDrag = () => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    if (drag && !drag.moved) setSheetH((current) => (current === 0 ? null : 0));
+  };
+
   const on = status !== "off";
 
   // Keep the screen awake while the guide runs, so GPS and narration are not cut off.
@@ -531,6 +565,7 @@ function Index() {
           current={coords ? { lat: coords[0], lng: coords[1] } : null}
           landmark={landmark}
           recenterKey={recenterKey}
+          bottomPadding={panelH + 24}
           places={places}
           onPick={(title) => {
             unlockAudio();
@@ -737,11 +772,28 @@ function Index() {
         </Sheet>
       </header>
 
-      <section className="surface absolute inset-x-0 bottom-0 z-500 mx-auto flex max-h-[62dvh] w-full max-w-4xl flex-col rounded-t-2xl border-x-0 border-b-0 sm:bottom-5 sm:max-h-[56dvh] sm:w-[calc(100%-2.5rem)] sm:rounded-lg sm:border">
-        <div className="mx-auto mt-2 mb-1 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/40 sm:hidden" />
+      <section ref={sectionRef} style={sheetH === null ? undefined : { maxHeight: "none" }} className="surface absolute inset-x-0 bottom-0 z-500 mx-auto flex max-h-[62dvh] w-full max-w-4xl flex-col rounded-t-2xl border-x-0 border-b-0 sm:bottom-5 sm:max-h-[56dvh] sm:w-[calc(100%-2.5rem)] sm:rounded-lg sm:border">
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Drag down to show more map, drag up to read more. Tap to hide or show the story."
+          onPointerDown={startDrag}
+          onPointerMove={moveDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setSheetH((current) => (current === 0 ? null : 0));
+            }
+          }}
+          className="flex h-8 shrink-0 cursor-grab touch-none items-center justify-center"
+        >
+          <span className="h-1.5 w-12 rounded-full bg-muted-foreground/50" />
+        </div>
 
         {/* Scrolling area: the story, nearby places and history. */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 sm:px-5">
+        <div ref={scrollRef} style={sheetH === null ? undefined : { height: sheetH, flex: "none", maxHeight: "70dvh" }} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-1 sm:px-5">
           {story ? (
             <div className="pb-3">
               <div className="flex gap-3">
@@ -855,7 +907,7 @@ function Index() {
         </div>
 
         {/* Fixed controls: always in the same place, whatever the story shows. */}
-        <div className="shrink-0 border-t border-border px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-5">
+        <div ref={dockRef} className="shrink-0 border-t border-border px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-5">
           {error ? (
             <p role="alert" className="mb-2 rounded-lg bg-destructive/15 px-3 py-2 text-center text-sm text-destructive">
               {error}

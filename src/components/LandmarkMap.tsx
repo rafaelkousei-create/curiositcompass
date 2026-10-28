@@ -7,11 +7,12 @@ type Props = {
   current: Point | null;
   landmark: (Point & { name: string }) | null;
   recenterKey?: number;
+  bottomPadding?: number;
   places?: (Point & { title: string })[];
   onPick?: (title: string) => void;
 };
 
-export function LandmarkMap({ current, landmark, recenterKey = 0, places = [], onPick }: Props) {
+export function LandmarkMap({ current, landmark, recenterKey = 0, bottomPadding = 330, places = [], onPick }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const currentMarkerRef = useRef<Marker | null>(null);
@@ -19,6 +20,8 @@ export function LandmarkMap({ current, landmark, recenterKey = 0, places = [], o
   const placesLayerRef = useRef<LayerGroup | null>(null);
   const onPickRef = useRef(onPick);
   onPickRef.current = onPick;
+  const bottomRef = useRef(bottomPadding);
+  bottomRef.current = bottomPadding;
 
   useEffect(() => {
     let disposed = false;
@@ -104,7 +107,7 @@ export function LandmarkMap({ current, landmark, recenterKey = 0, places = [], o
             [current.lat, current.lng],
             [landmark.lat, landmark.lng],
           ],
-          { paddingTopLeft: [60, 100], paddingBottomRight: [60, 330], maxZoom: 16 },
+          { paddingTopLeft: [60, 100], paddingBottomRight: [60, bottomRef.current], maxZoom: 16 },
         );
       } else if (current) {
         map.setView([current.lat, current.lng], Math.max(map.getZoom(), 15));
