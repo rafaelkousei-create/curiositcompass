@@ -126,7 +126,7 @@ function Index() {
         const items = JSON.parse(saved) as LandmarkStory[];
         if (Array.isArray(items)) {
           setHistory(items.slice(0, 30));
-          heardRef.current = items.map((item) => item.name).reverse();
+          heardRef.current = items.flatMap((item) => [item.name, ...(item.covered ?? [])]).reverse();
         }
       }
       const savedMode = localStorage.getItem("compass-mode");
@@ -252,10 +252,11 @@ function Index() {
         if (run !== runIdRef.current) return;
         if (!runningRef.current && !force) return;
         if (!result.found || !result.story) {
+          if (force) setError("That's everything nearby for now. Keep moving and press Next again later.");
           setStatus(runningRef.current ? "listening" : "off");
           return;
         }
-        heardRef.current = [...heardRef.current, result.name].slice(-40);
+        heardRef.current = [...heardRef.current, result.name, ...(result.covered ?? [])].slice(-100);
         setStory(result);
         setHistory((prev) => [result, ...prev].slice(0, 30));
         await narrate(`${result.headline}. ${result.distanceHint}. ${result.story}`);
@@ -323,7 +324,7 @@ function Index() {
           setError("I couldn't find anything useful about that — try saying it a different way.");
           return;
         }
-        heardRef.current = [...heardRef.current, result.name].slice(-40);
+        heardRef.current = [...heardRef.current, result.name, ...(result.covered ?? [])].slice(-100);
         setStory(result);
         setHistory((prev) => [result, ...prev].slice(0, 30));
         setAsk("");

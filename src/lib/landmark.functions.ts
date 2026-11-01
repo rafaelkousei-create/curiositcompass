@@ -6,7 +6,7 @@ import { generateStructuredText } from "./ai-gateway.server";
 const Input = z.object({
   lat: z.number(),
   lng: z.number(),
-  heard: z.array(z.string()).max(40).default([]),
+  heard: z.array(z.string()).max(100).default([]),
   mode: z.enum(["driving", "walking"]).default("driving"),
   language: z.enum(["en", "el"]).default("en"),
   interests: z.array(z.string().max(30)).max(8).default([]),
@@ -25,6 +25,7 @@ const StorySchema = {
     "distanceHint",
     "lat",
     "lng",
+    "covered",
   ],
   properties: {
     found: { type: "boolean" },
@@ -36,6 +37,7 @@ const StorySchema = {
     distanceHint: { type: "string" },
     lat: { type: "number" },
     lng: { type: "number" },
+    covered: { type: "array", items: { type: "string" } },
   },
 } as const;
 
@@ -49,6 +51,7 @@ export type LandmarkStory = {
   distanceHint: string;
   lat: number;
   lng: number;
+  covered: string[];
   image: string;
   url: string;
 };
@@ -63,6 +66,7 @@ const StoryParser = z.object({
   distanceHint: z.string(),
   lat: z.number().default(0),
   lng: z.number().default(0),
+  covered: z.array(z.string()).default([]),
   image: z.string().default(""),
   url: z.string().default(""),
 });
@@ -77,9 +81,21 @@ const EMPTY_STORY: LandmarkStory = {
   distanceHint: "",
   lat: 0,
   lng: 0,
+  covered: [],
   image: "",
   url: "",
 };
+
+/** Style rules added to every story: facts, not promotion. */
+const STYLE_RULES =
+  " STYLE: tell facts, never promote. Every sentence must carry concrete information: who built or founded it," +
+  " when, how big it is, what it was used for, what happened there, how it works, why it has its name, or a" +
+  " surprising detail. Never use brochure language such as charming, picturesque, beautiful, stunning," +
+  " breathtaking, idyllic, quaint, vibrant, must-see, hidden gem, rich history, nestled, boasts, worth a visit," +
+  " perfect for, and never invite the listener to visit or explore. Do not praise the place or tell the listener" +
+  " how to feel. Do not describe architecture or atmosphere in general terms; name specific, verifiable features" +
+  " only. If the notes hold few facts, write a shorter story instead of padding it. Start with the most" +
+  " interesting fact, not with a greeting, and vary how stories begin. Never retell anything already told.";
 
 async function askForStory(
   instructions: string,
@@ -95,7 +111,7 @@ async function askForStory(
       ? ` The listener is especially interested in: ${opts.interests.join(", ")}. When choosing a place, prefer ones related to these themes and highlight that angle.`
       : "");
   const text = await generateStructuredText({
-    instructions: tuned,
+    instructions: tuned + STYLE_RULES,
     input,
     schema: StorySchema as unknown as Record<string, unknown>,
     schemaName: "landmark_story",
@@ -188,7 +204,17 @@ async function wikipediaNearby(
   }
 }
 
-/** Nearby places that have not been told yet; widens the search if the first is empty. */
+/** Lower case, no accents, only letters and digits, so names can be compared reliably. */
+function norm(text: string) {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+/** Nearby places that have not been told yet; widens the search until something new is found. */
 async function findCandidates(
   lat: number,
   lng: number,
@@ -196,9 +222,13 @@ async function findCandidates(
   limit = 8,
   lang = "en",
 ): Promise<Place[]> {
-  const told = heard.map((h) => h.toLowerCase());
-  const fresh = (places: Place[]) =>
-    places.filter((p) => !told.some((h) => h.includes(p.title.toLowerCase())));
+  const told = heard.map(norm).filter((h) => h.length > 2);
+  const isTold = (title: string) => {
+    const n = norm(title);
+    if (n.length < 3) return false;
+    return told.some((h) => h === n || (n.length >= 5 && h.includes(n)) || (h.length >= 5 && n.includes(h)));
+  };
+  const fresh = (places: Place[]) => places.filter((p) => !isTold(p.title));
 
   // Search in the chosen language first, then in English.
   const nearby = async (radius: number) => {
@@ -207,7 +237,8 @@ async function findCandidates(
     return found;
   };
   let places = await nearby(1000);
-  if (places.length === 0) places = await nearby(5000);
+  if (places.length === 0) places = await nearby(3000);
+  if (places.length === 0) places = await nearby(8000);
   return places.slice(0, limit);
 }
 
@@ -289,29 +320,36 @@ export const getNearbyStory = createServerFn({ method: "POST" })
         ? "who is driving a car and cannot look at a screen."
         : "who is walking around on foot.";
 
-    const candidates = await findCandidates(data.lat, data.lng, data.heard, 8, data.language);
+    const candidates = await findCandidates(data.lat, data.lng, data.heard, 12, data.language);
 
     if (candidates.length > 0) {
       // Grounded mode: the AI only tells the story of a real, nearby place.
       const instructions = [
         "You are a warm, knowledgeable local guide narrating points of interest to someone",
         listener,
-        "You are given a list of REAL places near the listener, each with notes from Wikipedia",
-        "and its distance in metres. Choose the ONE most interesting place for a curious visitor",
-        "(prefer history, culture, architecture, nature and striking facts; avoid ordinary shops,",
-        "schools or streets unless they are genuinely notable). If none is remarkable, still choose",
-        "the best one available, and set found to true.",
-        "story: 70-130 words of spoken narration - vivid and factual, based on the notes. You may add",
-        "well-established facts you are sure of, but never invent dates, names or numbers.",
-        "No greetings, no 'welcome to', no mention of coordinates or GPS, ready to be read aloud.",
-        "name: the place's name. headline: max 8 words. area: the neighbourhood, town or city.",
+        "You are given REAL places near the listener, each with notes from Wikipedia and its distance in",
+        "metres, and a list of topics that were ALREADY told.",
+        "Pick the ONE most interesting topic for a curious person (history, culture, engineering, nature,",
+        "striking facts; skip ordinary shops, schools, streets and purely administrative areas unless notable).",
+        "Never retell anything from the already-told list, not even another side of the same village or site.",
+        "If several listed places belong to the same village, town or site (the village itself, its church,",
+        "its square, its municipal unit and so on), COMBINE them into ONE story with the best distinct facts",
+        "and put the titles of every place you used or merged into covered, so they are not told again.",
+        "Set found to true whenever a listed place is not already told. Set found to false only if every",
+        "listed place is already covered by the told list.",
+        "story: 70-130 words of spoken narration based on the notes. You may add well-established facts you",
+        "are sure of, but never invent dates, names or numbers. No greetings, no 'welcome to', no mention of",
+        "coordinates or GPS, ready to be read aloud.",
+        "name: the main place's title exactly as in the list. headline: max 8 words. area: the town or city.",
         "category: e.g. 'Historic church'.",
         "distanceHint: a short spoken cue based on the given distance, like 'about 300 metres from you'.",
-        "lat/lng: copy the coordinates given for the chosen place.",
+        "covered: the titles, exactly as in the list, of every place the story used or merged (at least the main one).",
+        "lat/lng: copy the coordinates given for the main place.",
       ].join(" ");
 
       const input = [
         `Listener position: ${data.lat}, ${data.lng}`,
+        `Already told (do not repeat): ${data.heard.length ? data.heard.join("; ") : "(nothing yet)"}`,
         "Nearby places:",
         ...candidates.map(
           (p, i) =>
@@ -321,6 +359,8 @@ export const getNearbyStory = createServerFn({ method: "POST" })
 
       const story = await askForStory(instructions, input, data);
       if (story.found && story.story) return withMedia(story, candidates);
+      // Everything nearby is already covered: say nothing rather than repeat.
+      return EMPTY_STORY;
     }
 
     // Fallback: no Wikipedia places found, so rely on the AI's own knowledge, with a wider reach.
@@ -340,7 +380,9 @@ export const getNearbyStory = createServerFn({ method: "POST" })
       "distanceHint: a short spoken cue like 'just on your right', 'in this area' or 'about 400 metres ahead'.",
       "lat/lng: the real decimal coordinates of the place itself, as precise as you know them",
       "(use 0 and 0 only when found is false).",
-      "Never repeat a landmark that appears in the already-told list.",
+      "Never repeat a landmark that appears in the already-told list. If the village or area itself was",
+      "already told, set found to false instead of retelling it.",
+      "covered: an empty list.",
     ].join(" ");
 
     const input = [
@@ -402,7 +444,7 @@ export const describeNearby = createServerFn({ method: "POST" })
       "area: the neighbourhood, town or city. category: e.g. Small airfield.",
       "distanceHint: a short spoken cue like about 300 metres from you, or nearby.",
       "lat/lng: the coordinates of the place (copy them from the list when you chose from it;",
-      "otherwise use 0 and 0).",
+      "otherwise use 0 and 0). covered: an empty list.",
     ].join(" ");
 
     const input = [
