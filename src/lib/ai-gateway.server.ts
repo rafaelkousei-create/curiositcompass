@@ -38,6 +38,7 @@ export async function generateStructuredText(options: {
   input: string;
   schema: Record<string, unknown>;
   schemaName: string;
+  model?: string;
 }) {
   const key = requireOpenAiKey();
 
@@ -48,7 +49,7 @@ export async function generateStructuredText(options: {
       Authorization: `Bearer ${key}`,
     },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
+      model: options.model || "gpt-4o-mini",
       messages: [
         { role: "system", content: options.instructions },
         { role: "user", content: options.input },

@@ -100,7 +100,7 @@ const STYLE_RULES =
 async function askForStory(
   instructions: string,
   input: string,
-  opts: { mode: string; language: string; interests: string[] },
+  opts: { mode: string; language: string; interests: string[]; model?: string },
 ): Promise<LandmarkStory> {
   const tuned =
     instructions.replace("70-130 words", opts.mode === "walking" ? "100-170 words" : "70-130 words") +
@@ -112,6 +112,7 @@ async function askForStory(
       : "");
   const text = await generateStructuredText({
     instructions: tuned + STYLE_RULES,
+    model: opts.model,
     input,
     schema: StorySchema as unknown as Record<string, unknown>,
     schemaName: "landmark_story",
@@ -133,6 +134,7 @@ type Place = {
   notes: string;
   image: string;
   url: string;
+  qid?: string;
 };
 
 type WikiPage = {
@@ -141,6 +143,7 @@ type WikiPage = {
   coordinates?: { lat: number; lon: number }[];
   thumbnail?: { source: string };
   fullurl?: string;
+  pageprops?: { wikibase_item?: string };
 };
 
 function metresBetween(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -166,7 +169,8 @@ async function wikipediaNearby(
     ggscoord: `${lat}|${lng}`,
     ggsradius: String(radius),
     ggslimit: "20",
-    prop: "extracts|coordinates|pageimages|info",
+    prop: "extracts|coordinates|pageimages|info|pageprops",
+    ppprop: "wikibase_item",
     piprop: "thumbnail",
     pithumbsize: "640",
     inprop: "url",
@@ -195,6 +199,7 @@ async function wikipediaNearby(
         notes: page.extract.replace(/\s+/g, " ").trim(),
         image: page.thumbnail?.source ?? "",
         url: page.fullurl ?? "",
+        qid: page.pageprops?.wikibase_item ?? "",
       });
     }
     return places.sort((a, b) => a.distance - b.distance);
@@ -310,6 +315,155 @@ async function osmNearby(lat: number, lng: number): Promise<Place[]> {
   }
 }
 
+/* ---------- Wikidata: verified facts (dates, sizes, names) ---------- */
+
+const FACT_PROPS: Record<string, string> = {
+  P571: "founded or built",
+  P1619: "officially opened",
+  P576: "ended or demolished",
+  P84: "architect",
+  P149: "architectural style",
+  P138: "named after",
+  P112: "founded by",
+  P170: "creator",
+  P2048: "height",
+  P2044: "elevation above sea level",
+  P1082: "population",
+  P2046: "area",
+  P1435: "heritage status",
+};
+
+type WdClaim = { mainsnak?: { snaktype?: string; datavalue?: { value?: unknown } }; rank?: string };
+type WdEntity = { claims?: Record<string, WdClaim[]>; labels?: Record<string, { value?: string }> };
+
+function bestClaims(claims: WdClaim[] | undefined) {
+  const good = (claims ?? []).filter((c) => c.mainsnak?.snaktype === "value" && c.rank !== "deprecated");
+  const preferred = good.filter((c) => c.rank === "preferred");
+  return (preferred.length > 0 ? preferred : good).slice(0, 2);
+}
+
+function wikidataYear(value: unknown) {
+  const time = (value as { time?: string } | null)?.time;
+  const match = time ? /^([+-])(\d+)-/.exec(time) : null;
+  if (!match) return "";
+  const year = Number(match[2]);
+  return match[1] === "-" ? `${year} BC` : String(year);
+}
+
+async function wikidataFacts(qids: string[], lang: string): Promise<Record<string, string>> {
+  const ids = [...new Set(qids.filter((q) => /^Q\d+$/.test(q)))].slice(0, 40);
+  if (ids.length === 0) return {};
+  const api = "https://www.wikidata.org/w/api.php";
+  const headers = { "User-Agent": "CuriosityCompass/1.0 (personal landmark guide app)" };
+  try {
+    const first = await fetch(
+      `${api}?${new URLSearchParams({ action: "wbgetentities", format: "json", ids: ids.join("|"), props: "claims" })}`,
+      { headers, signal: AbortSignal.timeout(6000) },
+    );
+    if (!first.ok) return {};
+    const entities = ((await first.json()) as { entities?: Record<string, WdEntity> }).entities ?? {};
+
+    // Names for the things the facts point to (architects, styles, units...).
+    const wanted = new Set<string>();
+    for (const entity of Object.values(entities)) {
+      for (const prop of Object.keys(FACT_PROPS)) {
+        for (const claim of bestClaims(entity.claims?.[prop])) {
+          const value = claim.mainsnak?.datavalue?.value as { id?: string; unit?: string } | undefined;
+          if (value?.id) wanted.add(value.id);
+          const unit = value?.unit ? /Q\d+$/.exec(value.unit) : null;
+          if (unit) wanted.add(unit[0]);
+        }
+      }
+    }
+    const labels: Record<string, string> = {};
+    if (wanted.size > 0) {
+      const second = await fetch(
+        `${api}?${new URLSearchParams({
+          action: "wbgetentities",
+          format: "json",
+          ids: [...wanted].slice(0, 50).join("|"),
+          props: "labels",
+          languages: [...new Set([lang, "en"])].join("|"),
+        })}`,
+        { headers, signal: AbortSignal.timeout(6000) },
+      );
+      if (second.ok) {
+        const named = ((await second.json()) as { entities?: Record<string, WdEntity> }).entities ?? {};
+        for (const [id, entity] of Object.entries(named)) {
+          const label = entity.labels?.[lang]?.value ?? entity.labels?.en?.value;
+          if (label) labels[id] = label;
+        }
+      }
+    }
+
+    const result: Record<string, string> = {};
+    for (const [qid, entity] of Object.entries(entities)) {
+      const parts: string[] = [];
+      for (const [prop, name] of Object.entries(FACT_PROPS)) {
+        const values = bestClaims(entity.claims?.[prop])
+          .map((claim) => {
+            const value = claim.mainsnak?.datavalue?.value as
+              | { id?: string; time?: string; amount?: string; unit?: string }
+              | string
+              | undefined;
+            if (!value || typeof value === "string") return "";
+            if (value.time) return wikidataYear(value);
+            if (value.id) return labels[value.id] ?? "";
+            if (value.amount) {
+              const amount = Number(value.amount);
+              if (!Number.isFinite(amount)) return "";
+              const unit = value.unit ? /Q\d+$/.exec(value.unit) : null;
+              return `${amount} ${unit ? (labels[unit[0]] ?? "") : ""}`.trim();
+            }
+            return "";
+          })
+          .filter(Boolean);
+        if (values.length > 0) parts.push(`${name}: ${[...new Set(values)].join(", ")}`);
+      }
+      if (parts.length > 0) result[qid] = parts.join("; ");
+    }
+    return result;
+  } catch (error) {
+    console.error("Wikidata lookup failed:", error);
+    return {};
+  }
+}
+
+/** Adds the verified Wikidata facts to the notes of each place. */
+async function withFacts(places: Place[], lang: string): Promise<Place[]> {
+  const facts = await wikidataFacts(places.map((p) => p.qid ?? ""), lang);
+  return places.map((p) =>
+    p.qid && facts[p.qid] ? { ...p, notes: `${p.notes} | Verified facts (Wikidata): ${facts[p.qid]}` } : p,
+  );
+}
+
+/** The full text of a Wikipedia article (first part), for long stories. */
+async function wikipediaLong(title: string, lang: string): Promise<string> {
+  for (const wiki of lang === "en" ? ["en"] : [lang, "en"]) {
+    try {
+      const params = new URLSearchParams({
+        action: "query",
+        format: "json",
+        prop: "extracts",
+        explaintext: "1",
+        redirects: "1",
+        titles: title,
+      });
+      const response = await fetch(`https://${wiki}.wikipedia.org/w/api.php?${params.toString()}`, {
+        headers: { "User-Agent": "CuriosityCompass/1.0 (personal landmark guide app)" },
+        signal: AbortSignal.timeout(7000),
+      });
+      if (!response.ok) continue;
+      const data = (await response.json()) as { query?: { pages?: Record<string, { extract?: string }> } };
+      const text = Object.values(data.query?.pages ?? {})[0]?.extract?.replace(/\n{2,}/g, "\n").trim();
+      if (text && text.length > 200) return text.slice(0, 7000);
+    } catch (error) {
+      console.error("Wikipedia article lookup failed:", error);
+    }
+  }
+  return "";
+}
+
 /* ---------- Server functions ---------- */
 
 export const getNearbyStory = createServerFn({ method: "POST" })
@@ -320,7 +474,20 @@ export const getNearbyStory = createServerFn({ method: "POST" })
         ? "who is driving a car and cannot look at a screen."
         : "who is walking around on foot.";
 
-    const candidates = await findCandidates(data.lat, data.lng, data.heard, 12, data.language);
+    let candidates = await withFacts(
+      await findCandidates(data.lat, data.lng, data.heard, 12, data.language),
+      data.language,
+    );
+    if (candidates.length === 0) {
+      const toldNames = data.heard.map(norm).filter((h) => h.length > 2);
+      const isToldTitle = (title: string) => {
+        const n = norm(title);
+        return toldNames.some((h) => h === n || (n.length >= 5 && h.includes(n)) || (h.length >= 5 && n.includes(h)));
+      };
+      candidates = (await osmNearby(data.lat, data.lng))
+        .filter((p) => !p.title.startsWith("Unnamed") && !isToldTitle(p.title))
+        .slice(0, 12);
+    }
 
     if (candidates.length > 0) {
       // Grounded mode: the AI only tells the story of a real, nearby place.
@@ -337,6 +504,7 @@ export const getNearbyStory = createServerFn({ method: "POST" })
         "and put the titles of every place you used or merged into covered, so they are not told again.",
         "Set found to true whenever a listed place is not already told. Set found to false only if every",
         "listed place is already covered by the told list.",
+        "Notes may include a Verified facts (Wikidata) section with dates, sizes and names: use those numbers, they are the most reliable.",
         "story: 70-130 words of spoken narration based on the notes. You may add well-established facts you",
         "are sure of, but never invent dates, names or numbers. No greetings, no 'welcome to', no mention of",
         "coordinates or GPS, ready to be read aloud.",
@@ -420,7 +588,7 @@ export const describeNearby = createServerFn({ method: "POST" })
       seen.add(key);
       candidates.push(place);
     }
-    const list = candidates.slice(0, 40);
+    const list = await withFacts(candidates.slice(0, 40), data.language);
 
     const instructions = [
       "You are a warm, knowledgeable local guide who can talk about ANYTHING near the listener,",
@@ -475,4 +643,139 @@ export const getNearbyPlaces = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<NearbyPlace[]> => {
     const places = await findCandidates(data.lat, data.lng, [], 20, data.language);
     return places.map(({ title, lat, lng, distance }) => ({ title, lat, lng, distance }));
+  });
+
+/* ---------- "I am curious": a 3 minute story ---------- */
+
+const GENERAL_TOPICS = [
+  "an unusual fact about the sea, ships or navigation",
+  "how an everyday object was invented",
+  "a surprising event in ancient history",
+  "the science of weather, the sky or the seasons",
+  "an animal with a remarkable ability",
+  "a famous journey or expedition",
+  "how a famous bridge, tunnel, canal or road was built",
+  "a strange law, custom or tradition somewhere in the world",
+  "a scientist or inventor and what they got right or wrong",
+  "how a language, alphabet or number system developed",
+  "a remarkable natural phenomenon",
+  "the history of a food or a drink",
+  "an engineering failure and what was learned from it",
+  "one space mission and what it found out",
+  "one surprising way the human body works",
+];
+
+const PickSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["title", "general"],
+  properties: { title: { type: "string" }, general: { type: "boolean" } },
+} as const;
+
+const LONG_RULES = [
+  "story: 420-480 words (about three minutes when read aloud; never fewer than 350).",
+  "One coherent spoken story: open with the most striking fact, develop it in a logical order",
+  "(chronological or cause and effect), connect the details, and close with a fitting last fact.",
+  "Plain spoken sentences; no lists, no headings, no emoji, no greetings, no mention of coordinates or GPS.",
+  "Use ONLY facts found in the provided material or facts you are completely certain of.",
+  "Never invent or guess dates, names, numbers or quotes. If you lack enough facts, tell fewer things",
+  "in more depth instead of filling space.",
+  "headline: max 8 words. category: e.g. 'Village history' or 'Science story'.",
+].join(" ");
+
+export const getCuriousStory = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => Input.parse(input))
+  .handler(async ({ data }): Promise<LandmarkStory> => {
+    const model = process.env["OPENAI_STORY_MODEL"] || "gpt-4.1";
+    const told = data.heard.length ? data.heard.join("; ") : "(nothing yet)";
+    const listener =
+      data.mode === "driving"
+        ? "The listener is driving and cannot look at a screen."
+        : "The listener is walking.";
+
+    const candidates = await withFacts(
+      await findCandidates(data.lat, data.lng, data.heard, 12, data.language),
+      data.language,
+    );
+
+    // Step 1: choose a topic from the area, if there is anything with enough substance.
+    let chosen: Place | null = null;
+    if (candidates.length > 0) {
+      try {
+        const text = await generateStructuredText({
+          instructions: [
+            "From the list, choose the topic with the richest, most interesting story that could fill three",
+            "minutes: a village, town, region, site, event or person connected to the place. Prefer the broader",
+            "subject (the village or area itself, or a notable site) over small details. Never choose a topic from",
+            "the already-told list. If nothing has enough substance, set general to true and title to an empty string.",
+            "Otherwise copy the title exactly as in the list.",
+          ].join(" "),
+          input: [
+            `Already told: ${told}`,
+            "Places:",
+            ...candidates.map((p, i) => `${i + 1}. ${p.title} | ${p.distance} metres away | ${p.notes.slice(0, 350)}`),
+          ].join("\n"),
+          schema: PickSchema as unknown as Record<string, unknown>,
+          schemaName: "topic_pick",
+        });
+        const pick = JSON.parse(text) as { title?: string; general?: boolean };
+        if (!pick.general && pick.title) {
+          const wanted = pick.title.trim().toLowerCase();
+          chosen = candidates.find((p) => p.title.toLowerCase() === wanted) ?? null;
+        }
+      } catch (error) {
+        console.error("Topic choice failed:", error);
+      }
+    }
+
+    // Step 2a: a long story about the area.
+    if (chosen) {
+      const article = await wikipediaLong(chosen.title, data.language);
+      const related = candidates.filter((p) => p !== chosen).slice(0, 5);
+      const instructions = [
+        "You are a knowledgeable narrator who tells one factual story about a place near the listener.",
+        listener,
+        "You are given the main topic with an article text and verified facts, plus a few related places nearby.",
+        "Tell the story of the MAIN topic. Mention a related place briefly only if it is truly connected.",
+        "Never retell anything from the already-told list.",
+        "name: the main topic's title exactly as in the material. area: the town or region.",
+        "distanceHint: a short spoken cue like 'about 300 metres from you' or 'in this area'.",
+        "covered: the titles (exactly as given) of every place the story used, the main one first.",
+        "lat/lng: copy the coordinates given for the main topic.",
+        LONG_RULES,
+      ].join(" ");
+      const input = [
+        `Listener position: ${data.lat}, ${data.lng}`,
+        `Already told (never repeat): ${told}`,
+        `MAIN TOPIC: ${chosen.title} | ${chosen.distance} metres away | lat ${chosen.lat}, lng ${chosen.lng}`,
+        `Notes and verified facts: ${chosen.notes}`,
+        "Article text:",
+        article || "(no longer article available)",
+        "Related places nearby:",
+        ...related.map((p) => `- ${p.title}: ${p.notes.slice(0, 250)}`),
+      ].join("\n");
+      const story = await askForStory(instructions, input, { ...data, model });
+      if (story.found && story.story) return withMedia(story, [chosen, ...candidates]);
+    }
+
+    // Step 2b: a general story or fact.
+    const seed = GENERAL_TOPICS[Math.floor(Math.random() * GENERAL_TOPICS.length)];
+    const instructions = [
+      "You are a knowledgeable narrator who tells one factual story on any subject.",
+      listener,
+      `Choose one specific, well-documented subject within this theme: ${seed}.`,
+      "If there is a natural link to the country or region of the listener, use it; never force one.",
+      "Never choose a subject from the already-told list.",
+      "name: the subject as a short title. area: an empty string or the region it relates to.",
+      "distanceHint: 'a story for the road'.",
+      "covered: an empty list. lat/lng: 0 and 0.",
+      "Set found to true.",
+      LONG_RULES,
+    ].join(" ");
+    const input = [
+      `Listener position (for context only): ${data.lat}, ${data.lng}`,
+      `Already told (never repeat): ${told}`,
+    ].join("\n");
+    const story = await askForStory(instructions, input, { ...data, model });
+    return story.found && story.story ? story : EMPTY_STORY;
   });

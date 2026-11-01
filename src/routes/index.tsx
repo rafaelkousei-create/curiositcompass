@@ -14,6 +14,7 @@ import {
   Radio,
   Send,
   SkipForward,
+  Sparkles,
   Square,
   Trash2,
   Volume2,
@@ -32,12 +33,29 @@ import {
 import {
   describeNearby,
   getNearbyPlaces,
+  getCuriousStory,
   getNearbyStory,
   type LandmarkStory,
   type NearbyPlace,
 } from "@/lib/landmark.functions";
 import { pauseAudio, resumeAudio, speak, unlockAudio } from "@/lib/speech";
 import { startRecording, transcribe, type Recorder } from "@/lib/transcribe";
+
+/** Cuts a long text into pieces at sentence ends, so long stories can be spoken piece by piece. */
+function splitForSpeech(text: string, max = 1400): string[] {
+  const sentences = text.match(/[^.!?;·]+[.!?;·]*\s*/g) ?? [text];
+  const parts: string[] = [];
+  let current = "";
+  for (const sentence of sentences) {
+    if (current && current.length + sentence.length > max) {
+      parts.push(current.trim());
+      current = "";
+    }
+    current += sentence;
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts.length > 0 ? parts : [text];
+}
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -89,6 +107,7 @@ function distance(a: [number, number], b: [number, number]) {
 function Index() {
   const fetchStory = useServerFn(getNearbyStory);
   const fetchDescribed = useServerFn(describeNearby);
+  const fetchCurious = useServerFn(getCuriousStory);
   const fetchPlaces = useServerFn(getNearbyPlaces);
 
 
@@ -215,7 +234,10 @@ function Index() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      await speak(text, controller.signal);
+      for (const part of splitForSpeech(text)) {
+        if (controller.signal.aborted) break;
+        await speak(part, controller.signal);
+      }
     } finally {
       abortRef.current = null;
       setPaused(false);
@@ -381,6 +403,7 @@ function Index() {
 
 
   const stop = useCallback(() => {
+    runIdRef.current++;
     runningRef.current = false;
     if (nextTimerRef.current) clearTimeout(nextTimerRef.current);
     nextTimerRef.current = null;
@@ -391,6 +414,49 @@ function Index() {
     busyRef.current = false;
     setStatus("off");
   }, []);
+
+  const runCurious = useCallback(async () => {
+    if (asking) return;
+    stop();
+    unlockAudio();
+    const run = ++runIdRef.current;
+    busyRef.current = true;
+    setAsking(true);
+    setError(null);
+    setStatus("thinking");
+    try {
+      const point = await currentPoint();
+      setCoords(point);
+      const result = await fetchCurious({
+        data: {
+          lat: point[0],
+          lng: point[1],
+          heard: heardRef.current,
+          mode: modeRef.current,
+          language: languageRef.current,
+          interests: interestsRef.current,
+        },
+      });
+      if (run !== runIdRef.current) return;
+      if (!result.found || !result.story) {
+        setError("I couldn't find a good story right now. Please try again in a moment.");
+        return;
+      }
+      heardRef.current = [...heardRef.current, result.name, ...(result.covered ?? [])].slice(-100);
+      setStory(result);
+      setHistory((prev) => [result, ...prev].slice(0, 30));
+      await narrate(`${result.headline}. ${result.distanceHint}. ${result.story}`);
+    } catch (err) {
+      if (run === runIdRef.current) setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setAsking(false);
+      if (run === runIdRef.current) {
+        abortRef.current = null;
+        busyRef.current = false;
+        setStatus(runningRef.current ? "listening" : "off");
+      }
+    }
+  }, [asking, currentPoint, fetchCurious, narrate, stop]);
 
   const start = useCallback(() => {
     if (!("geolocation" in navigator)) {
@@ -946,6 +1012,17 @@ function Index() {
               <SkipForward className="size-5" /> Next
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={() => void runCurious()}
+            disabled={asking}
+            aria-label="I am curious: tell me a three minute story"
+            className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-full border border-border bg-secondary text-base font-medium disabled:opacity-60"
+          >
+            {asking ? <Loader2 className="size-5 animate-spin" /> : <Sparkles className="size-5 text-primary" />}
+            {asking ? "Preparing your story…" : "I am curious"}
+          </button>
 
           <form
             className="mt-2.5 flex items-center gap-2"
